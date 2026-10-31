@@ -47,8 +47,8 @@ router.get('/', async (req, res, next) => {
       parameters.push(to);
     }
     if (search) {
-      conditions.push('(CAST(p.id AS CHAR) LIKE ? OR i.invoice_number LIKE ? OR c.name LIKE ? OR p.transaction_ref LIKE ?)');
-      parameters.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+      conditions.push('(CAST(p.id AS CHAR) LIKE ? OR CONCAT(\'PAY-\', LPAD(p.id, 6, \'0\')) LIKE ? OR i.invoice_number LIKE ? OR c.name LIKE ? OR p.transaction_ref LIKE ?)');
+      parameters.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
     }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -97,8 +97,9 @@ router.get('/:id', async (req, res, next) => {
 });
 
 router.post('/', async (req, res, next) => {
-  const connection = await pool.getConnection();
+  let connection;
   try {
+    connection = await pool.getConnection();
     const invoiceId = Number(req.body.invoice_id);
     const amount = Number(req.body.amount);
     const method = req.body.payment_method;
@@ -112,6 +113,7 @@ router.post('/', async (req, res, next) => {
     if (reference.length > 100) throw httpError(400, 'Payment reference must be 100 characters or fewer.');
     if (note.length > 1000) throw httpError(400, 'Payment note must be 1000 characters or fewer.');
     const paymentCents = Math.round((amount + Number.EPSILON) * 100);
+    if (paymentCents < 1) throw httpError(400, 'Payment amount must be at least 0.01.');
 
     await connection.beginTransaction();
     const [invoiceRows] = await connection.execute(
@@ -155,10 +157,10 @@ router.post('/', async (req, res, next) => {
     );
     res.status(201).json({ success: true, data: rows[0] });
   } catch (error) {
-    await connection.rollback();
+    if (connection) await connection.rollback();
     next(error);
   } finally {
-    connection.release();
+    if (connection) connection.release();
   }
 });
 

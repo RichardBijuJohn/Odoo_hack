@@ -19,6 +19,13 @@ function numberValue(value, label, { min = 0, max = Number.MAX_SAFE_INTEGER } = 
   return number;
 }
 
+function decimalPlaces(value, places, label) {
+  const scale = 10 ** places;
+  if (Math.abs(value * scale - Math.round(value * scale)) > 1e-7) {
+    throw httpError(400, `${label} supports at most ${places} decimal places.`);
+  }
+}
+
 function validDate(value, label) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     throw httpError(400, `${label} must be a valid date in YYYY-MM-DD format.`);
@@ -48,8 +55,12 @@ function parseItems(items) {
     const quantity = numberValue(item.quantity, `Item ${index + 1} quantity`, { min: 0.001, max: 1000000 });
     const unitPrice = numberValue(item.unit_price, `Item ${index + 1} unit price`, { max: 99999999.99 });
     const taxPercentage = numberValue(item.tax_percentage ?? 0, `Item ${index + 1} tax percentage`, { max: 100 });
+    decimalPlaces(quantity, 3, `Item ${index + 1} quantity`);
+    decimalPlaces(unitPrice, 2, `Item ${index + 1} unit price`);
+    decimalPlaces(taxPercentage, 2, `Item ${index + 1} tax percentage`);
     const subtotal = roundMoney(quantity * unitPrice);
     const taxAmount = roundMoney(subtotal * taxPercentage / 100);
+    if (subtotal > 99999999.99 || taxAmount > 99999999.99) throw httpError(400, `Item ${index + 1} exceeds the maximum invoice amount.`);
 
     return {
       description,
@@ -150,7 +161,7 @@ router.get('/', async (req, res, next) => {
               SUM(status = 'draft') AS draft_invoices,
               SUM(status = 'confirmed') AS confirmed_invoices,
               SUM(status = 'paid') AS paid_invoices,
-              COALESCE(SUM(CASE WHEN status IN ('draft', 'confirmed') THEN total_amount - paid_amount ELSE 0 END), 0) AS outstanding_amount
+              COALESCE(SUM(CASE WHEN status = 'confirmed' THEN total_amount - paid_amount ELSE 0 END), 0) AS outstanding_amount
        FROM invoices`
     );
     res.json({ success: true, data: invoices, summary: summaryRows[0] });
@@ -171,8 +182,9 @@ router.get('/:id', async (req, res, next) => {
 });
 
 router.post('/', async (req, res, next) => {
-  const connection = await pool.getConnection();
+  let connection;
   try {
+    connection = await pool.getConnection();
     const customerId = numberValue(req.body.customer_id, 'Customer', { min: 1, max: 2147483647 });
     const subscriptionId = req.body.subscription_id ? numberValue(req.body.subscription_id, 'Subscription', { min: 1, max: 2147483647 }) : null;
     const issueDate = validDate(req.body.issue_date, 'Invoice date');
@@ -182,6 +194,9 @@ router.post('/', async (req, res, next) => {
     const subtotal = roundMoney(items.reduce((sum, item) => sum + item.subtotal, 0));
     const taxAmount = roundMoney(items.reduce((sum, item) => sum + item.taxAmount, 0));
     const total = roundMoney(items.reduce((sum, item) => sum + item.total, 0));
+    if (subtotal > 99999999.99 || taxAmount > 99999999.99 || total > 99999999.99) {
+      throw httpError(400, 'Invoice total exceeds the maximum supported amount.');
+    }
 
     await connection.beginTransaction();
     const [customerRows] = await connection.execute('SELECT id FROM customers WHERE id = ?', [customerId]);
@@ -206,16 +221,17 @@ router.post('/', async (req, res, next) => {
     await connection.commit();
     res.status(201).json({ success: true, data: await getInvoice(pool, result.insertId) });
   } catch (error) {
-    await connection.rollback();
+    if (connection) await connection.rollback();
     next(error);
   } finally {
-    connection.release();
+    if (connection) connection.release();
   }
 });
 
 router.put('/:id', async (req, res, next) => {
-  const connection = await pool.getConnection();
+  let connection;
   try {
+    connection = await pool.getConnection();
     if (!/^\d+$/.test(req.params.id)) throw httpError(400, 'Invoice ID must be a positive integer.');
     const id = Number(req.params.id);
     const customerId = numberValue(req.body.customer_id, 'Customer', { min: 1, max: 2147483647 });
@@ -227,6 +243,9 @@ router.put('/:id', async (req, res, next) => {
     const subtotal = roundMoney(items.reduce((sum, item) => sum + item.subtotal, 0));
     const taxAmount = roundMoney(items.reduce((sum, item) => sum + item.taxAmount, 0));
     const total = roundMoney(items.reduce((sum, item) => sum + item.total, 0));
+    if (subtotal > 99999999.99 || taxAmount > 99999999.99 || total > 99999999.99) {
+      throw httpError(400, 'Invoice total exceeds the maximum supported amount.');
+    }
 
     await connection.beginTransaction();
     const [invoiceRows] = await connection.execute('SELECT status, paid_amount FROM invoices WHERE id = ? FOR UPDATE', [id]);
@@ -255,10 +274,10 @@ router.put('/:id', async (req, res, next) => {
     await connection.commit();
     res.json({ success: true, data: await getInvoice(pool, id) });
   } catch (error) {
-    await connection.rollback();
+    if (connection) await connection.rollback();
     next(error);
   } finally {
-    connection.release();
+    if (connection) connection.release();
   }
 });
 
@@ -284,13 +303,13 @@ router.patch('/:id/cancel', async (req, res, next) => {
   try {
     if (!/^\d+$/.test(req.params.id)) throw httpError(400, 'Invoice ID must be a positive integer.');
     const [result] = await pool.execute(
-      `UPDATE invoices SET status = 'cancelled' WHERE id = ? AND status IN ('draft', 'confirmed')`,
+      `UPDATE invoices SET status = 'cancelled' WHERE id = ? AND status IN ('draft', 'confirmed') AND paid_amount = 0`,
       [Number(req.params.id)]
     );
     if (!result.affectedRows) {
       const [rows] = await pool.execute('SELECT status FROM invoices WHERE id = ?', [Number(req.params.id)]);
       if (!rows.length) throw httpError(404, 'Invoice not found.');
-      throw httpError(409, 'Paid or already cancelled invoices cannot be cancelled.');
+      throw httpError(409, 'Invoices with payments, paid invoices, or already cancelled invoices cannot be cancelled.');
     }
     res.json({ success: true, data: await getInvoice(pool, Number(req.params.id)) });
   } catch (error) {
