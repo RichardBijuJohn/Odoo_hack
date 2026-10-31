@@ -13,7 +13,8 @@ pool.getConnection()
     conn.release();
   })
   .catch((err) => {
-    console.warn('⚠️  MySQL connection warning (verify DB is running or update .env):', err.message);
+    const detail = err.message || (err.errors ? err.errors.map(e => e.message || e.code).join(', ') : err.code);
+    console.warn(`⚠️  MySQL connection warning: Could not connect to MySQL (${detail}). Verify MySQL is running and check backend/.env`);
   });
 
 app.listen(PORT, () => {
