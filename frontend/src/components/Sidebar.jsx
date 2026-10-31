@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, Package, CreditCard, Users, RefreshCw,
-  FileText, Wallet, Tag, BarChart2, UserCog, Zap, ExternalLink, Sparkles
+  FileText, Wallet, Tag, BarChart2, UserCog, Zap, ExternalLink, Sparkles, ShieldAlert
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
@@ -11,6 +11,7 @@ export default function Sidebar() {
   const navItems = [
     { to: '/dashboard',     label: 'Dashboard',          icon: LayoutDashboard },
     { to: '/rescue-ai',     label: 'Rescue AI ⭐',       icon: Sparkles, highlight: true },
+    { to: '/financial-stress', label: 'Payment Alerts', icon: ShieldAlert, highlight: true },
     { to: '/products',      label: 'Products',           icon: Package },
     { to: '/plans',         label: 'Subscription Plans', icon: CreditCard },
     { to: '/customers',     label: 'Customers',          icon: Users },

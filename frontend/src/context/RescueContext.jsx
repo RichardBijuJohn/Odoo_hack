@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { calculateChurnScore } from '../services/rescueAi';
+import { calculateChurnScore, calculateFinancialStress } from '../services/rescueAi';
 
 const MOCK_RESCUE_CUSTOMERS = [
   {
@@ -10,6 +10,12 @@ const MOCK_RESCUE_CUSTOMERS = [
     mrr: 659.00,
     daysSinceLastActive: 12,
     failedPayments: 3,
+    delayedPayments: 3,
+    partialPayments: 1,
+    outstandingInvoices: 1,
+    outstandingBalance: 659,
+    averageDaysLate: 16,
+    paymentFrequency: 'Monthly',
     hasDowngraded: false,
     supportTickets: 1,
     daysUntilRenewal: 4,
@@ -23,6 +29,12 @@ const MOCK_RESCUE_CUSTOMERS = [
     mrr: 999.00,
     daysSinceLastActive: 38,
     failedPayments: 0,
+    delayedPayments: 3,
+    partialPayments: 1,
+    outstandingInvoices: 1,
+    outstandingBalance: 999,
+    averageDaysLate: 11,
+    paymentFrequency: 'Monthly',
     hasDowngraded: true,
     supportTickets: 3,
     daysUntilRenewal: 18,
@@ -36,6 +48,12 @@ const MOCK_RESCUE_CUSTOMERS = [
     mrr: 299.00,
     daysSinceLastActive: 2,
     failedPayments: 0,
+    delayedPayments: 0,
+    partialPayments: 0,
+    outstandingInvoices: 0,
+    outstandingBalance: 0,
+    averageDaysLate: 0,
+    paymentFrequency: 'Monthly',
     hasDowngraded: false,
     supportTickets: 0,
     daysUntilRenewal: 45,
@@ -49,6 +67,12 @@ const MOCK_RESCUE_CUSTOMERS = [
     mrr: 140.00,
     daysSinceLastActive: 28,
     failedPayments: 2,
+    delayedPayments: 2,
+    partialPayments: 2,
+    outstandingInvoices: 2,
+    outstandingBalance: 280,
+    averageDaysLate: 21,
+    paymentFrequency: 'Weekly',
     hasDowngraded: true,
     supportTickets: 5,
     daysUntilRenewal: 3,
@@ -62,6 +86,12 @@ const MOCK_RESCUE_CUSTOMERS = [
     mrr: 659.00,
     daysSinceLastActive: 1,
     failedPayments: 0,
+    delayedPayments: 0,
+    partialPayments: 0,
+    outstandingInvoices: 0,
+    outstandingBalance: 0,
+    averageDaysLate: 0,
+    paymentFrequency: 'Monthly',
     hasDowngraded: false,
     supportTickets: 1,
     daysUntilRenewal: 22,
@@ -75,6 +105,12 @@ const MOCK_RESCUE_CUSTOMERS = [
     mrr: 999.00,
     daysSinceLastActive: 21,
     failedPayments: 1,
+    delayedPayments: 1,
+    partialPayments: 0,
+    outstandingInvoices: 1,
+    outstandingBalance: 999,
+    averageDaysLate: 8,
+    paymentFrequency: 'Annual',
     hasDowngraded: false,
     supportTickets: 2,
     daysUntilRenewal: 6,
@@ -105,7 +141,10 @@ export const RescueProvider = ({ children }) => {
 
   // Enrich customer records with real-time ML risk scoring
   const enrichedCustomers = customers.map(cust => {
-    const analysis = calculateChurnScore(cust);
+    const analysis = {
+      ...calculateChurnScore(cust),
+      ...calculateFinancialStress(cust),
+    };
     return {
       ...cust,
       ...analysis

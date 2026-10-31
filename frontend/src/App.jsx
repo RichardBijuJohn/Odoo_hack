@@ -15,6 +15,7 @@ import CustomerPortal from './pages/Portal/CustomerPortal'
 
 // Rescue AI Page
 import RescueAI from './pages/RescueAI/RescueAI'
+import FinancialStress from './pages/FinancialStress/FinancialStress'
 
 // Internal Admin/Staff Pages
 import Dashboard from './pages/Dashboard/Dashboard'
@@ -84,6 +85,7 @@ export default function App() {
                 <Route index element={<Navigate to="/dashboard" replace />} />
                 <Route path="dashboard" element={<Dashboard />} />
                 <Route path="rescue-ai" element={<RescueAI />} />
+                <Route path="financial-stress" element={<FinancialStress />} />
                 <Route path="products" element={<Products />} />
                 <Route path="plans" element={<Plans />} />
                 <Route path="customers" element={<Customers />} />
