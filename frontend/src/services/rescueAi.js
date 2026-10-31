@@ -159,3 +159,49 @@ export function generateRescueActions(customer) {
 
   return actions;
 }
+
+export function calculateFinancialStress(customer) {
+  const delayedPayments = customer.delayedPayments || 0;
+  const partialPayments = customer.partialPayments || 0;
+  const outstandingInvoices = customer.outstandingInvoices || 0;
+  const averageDaysLate = customer.averageDaysLate || 0;
+  let score = 0;
+  const signals = [];
+
+  if (delayedPayments >= 3) {
+    score += 35;
+    signals.push({ label: 'Repeated delays', value: `${delayedPayments} delayed payments`, tone: 'rose' });
+  } else if (delayedPayments > 0) {
+    score += 18;
+    signals.push({ label: 'Delayed payment', value: `${delayedPayments} delayed payment${delayedPayments === 1 ? '' : 's'}`, tone: 'amber' });
+  }
+  if (partialPayments > 0) {
+    score += Math.min(partialPayments * 12, 24);
+    signals.push({ label: 'Partial payments', value: `${partialPayments} recent partial payment${partialPayments === 1 ? '' : 's'}`, tone: 'amber' });
+  }
+  if (outstandingInvoices > 0) {
+    score += Math.min(outstandingInvoices * 15, 30);
+    signals.push({ label: 'Outstanding invoices', value: `${outstandingInvoices} invoice${outstandingInvoices === 1 ? '' : 's'} open`, tone: 'rose' });
+  }
+  if (averageDaysLate >= 14) {
+    score += 15;
+    signals.push({ label: 'Growing lateness', value: `Usually ${averageDaysLate} days late`, tone: 'rose' });
+  } else if (averageDaysLate >= 7) {
+    score += 8;
+    signals.push({ label: 'Payment timing', value: `Usually ${averageDaysLate} days late`, tone: 'amber' });
+  }
+
+  const riskLevel = score >= 60 ? 'High' : score >= 30 ? 'Medium' : 'Low';
+  const recommendation = riskLevel === 'High'
+    ? 'Send a payment reminder and offer a flexible schedule'
+    : riskLevel === 'Medium'
+      ? 'Send a friendly reminder before the next due date'
+      : 'Continue monitoring payment behaviour';
+
+  return {
+    financialStressScore: Math.min(score, 100),
+    financialStressLevel: riskLevel,
+    financialSignals: signals,
+    financialRecommendation: recommendation,
+  };
+}
