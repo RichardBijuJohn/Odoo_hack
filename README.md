@@ -159,6 +159,23 @@ Only draft invoices can be edited or confirmed. Payments require a confirmed inv
 - Product endpoints include `GET /api/products` (search, filters, sorting, pagination), `GET /api/products/summary`, `GET /api/products/categories`, category CRUD, product CRUD, `GET /api/products/:id`, and `PATCH /api/products/:id/stock`.
 - The current authentication routes are stubs, so the app does not yet have a real user identity or role-based permission enforcement for product changes.
 
+## Admin Discounts
+
+Apply `database/migrations/004_discounts.sql` after the billing and product migrations. This adds discount rules, product/plan applicability tables, invoice discount fields, and invoice item product references.
+
+Discount management is available at `/discounts` to admin users only. The backend enforces the same boundary with `requireAdmin`, returning `403` for staff and customer roles. The main endpoints are:
+
+- `GET /api/discounts`
+- `POST /api/discounts`
+- `PUT /api/discounts/:id`
+- `PATCH /api/discounts/:id/activate`
+- `PATCH /api/discounts/:id/deactivate`
+- `DELETE /api/discounts/:id`
+- `POST /api/discounts/validate`
+- `POST /api/discounts/apply`
+
+Invoices accept an optional `discount_code`. Eligibility, date windows, usage limits, minimums, product/plan applicability, and capped percentage/fixed calculations are handled by `backend/src/services/discountService.js`. Applied discount name and amount are stored on the invoice.
+
 ---
 
 ## 🌿 Git Collaboration Rules
