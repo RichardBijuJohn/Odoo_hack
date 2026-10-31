@@ -6,13 +6,26 @@ const { authenticate } = require('../middleware/auth');
 // Attach user authentication context
 router.use(authenticate);
 
-// Date format validation helper (YYYY-MM-DD)
+// Date format validation helper. Accepts both ISO and localized day-first strings.
+const normalizeDateString = (dateString) => {
+  if (typeof dateString !== 'string') return '';
+
+  const isoMatch = /^\d{4}-\d{2}-\d{2}$/.exec(dateString);
+  if (isoMatch) return dateString;
+
+  const localMatch = /^\d{2}-\d{2}-\d{4}$/.exec(dateString);
+  if (!localMatch) return '';
+
+  const [day, month, year] = dateString.split('-').map(Number);
+  if (!day || !month || !year) return '';
+
+  const normalized = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  const d = new Date(`${normalized}T00:00:00`);
+  return d instanceof Date && !isNaN(d.getTime()) ? normalized : '';
+};
+
 const isValidDate = (dateString) => {
-  if (typeof dateString !== 'string') return false;
-  const regex = /^\d{4}-\d{2}-\d{2}$/;
-  if (!regex.test(dateString)) return false;
-  const d = new Date(dateString);
-  return d instanceof Date && !isNaN(d.getTime());
+  return !!normalizeDateString(dateString);
 };
 
 const BASE_SUBSCRIPTION_SELECT = `
@@ -170,6 +183,9 @@ router.get('/:id', async (req, res, next) => {
 router.post('/', async (req, res, next) => {
   try {
     const { customer_id, plan_id, start_date, end_date, next_billing_date, status } = req.body;
+    const normalizedStartDate = normalizeDateString(start_date);
+    const normalizedEndDate = normalizeDateString(end_date);
+    const normalizedNextBillingDate = normalizeDateString(next_billing_date);
 
     // 1. Validate customer_id
     if (!customer_id || isNaN(parseInt(customer_id, 10))) {
@@ -198,22 +214,22 @@ router.post('/', async (req, res, next) => {
     const planIdNum = parseInt(plan_id, 10);
 
     // 3. Validate start_date
-    if (!start_date || !isValidDate(start_date)) {
+    if (!normalizedStartDate) {
       return res.status(400).json({
         success: false,
-        message: 'A valid start_date in YYYY-MM-DD format is required.'
+        message: 'A valid start_date in YYYY-MM-DD or DD-MM-YYYY format is required.'
       });
     }
 
     // 4. Validate end_date if provided
     if (end_date !== undefined && end_date !== null && end_date !== '') {
-      if (!isValidDate(end_date)) {
+      if (!normalizedEndDate) {
         return res.status(400).json({
           success: false,
-          message: 'end_date must be in YYYY-MM-DD format.'
+          message: 'end_date must be in YYYY-MM-DD or DD-MM-YYYY format.'
         });
       }
-      if (new Date(end_date) < new Date(start_date)) {
+      if (new Date(normalizedEndDate) < new Date(normalizedStartDate)) {
         return res.status(400).json({
           success: false,
           message: 'end_date must be on or after start_date.'
@@ -223,10 +239,10 @@ router.post('/', async (req, res, next) => {
 
     // 5. Validate next_billing_date if provided
     if (next_billing_date !== undefined && next_billing_date !== null && next_billing_date !== '') {
-      if (!isValidDate(next_billing_date)) {
+      if (!normalizedNextBillingDate) {
         return res.status(400).json({
           success: false,
-          message: 'next_billing_date must be in YYYY-MM-DD format.'
+          message: 'next_billing_date must be in YYYY-MM-DD or DD-MM-YYYY format.'
         });
       }
     }
@@ -260,13 +276,13 @@ router.post('/', async (req, res, next) => {
     }
 
     // 9. Insert subscription
-    const cleanEndDate = end_date ? end_date : null;
-    const cleanNextBilling = next_billing_date ? next_billing_date : null;
+    const cleanEndDate = normalizedEndDate || null;
+    const cleanNextBilling = normalizedNextBillingDate || null;
 
     const [insertResult] = await pool.query(
       `INSERT INTO subscriptions (customer_id, plan_id, start_date, end_date, next_billing_date, status)
        VALUES (?, ?, ?, ?, ?, ?)`,
-      [customerIdNum, planIdNum, start_date, cleanEndDate, cleanNextBilling, subStatus]
+      [customerIdNum, planIdNum, normalizedStartDate, cleanEndDate, cleanNextBilling, subStatus]
     );
 
     // 10. Fetch inserted subscription with JOINed customer and plan details
