@@ -3,6 +3,7 @@ import DashboardLayout from './layouts/DashboardLayout'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { CatalogProvider } from './context/CatalogContext'
 import { RescueProvider } from './context/RescueContext'
+import { ThemeProvider } from './context/ThemeContext'
 
 // Auth Pages
 import SignUp from './pages/Auth/SignUp'
@@ -47,22 +48,23 @@ function CustomerRoute({ children }) {
   if (!currentUser) {
     return <Navigate to="/login" replace />
   }
+  return children
+}
 
-  function AdminRoute({ children }) {
-    const { currentUser } = useAuth()
-    if (!currentUser) return <Navigate to="/login" replace />
-    if (currentUser.role !== 'admin') return <Navigate to="/dashboard" replace />
-    return children
-  }
+function AdminRoute({ children }) {
+  const { currentUser } = useAuth()
+  if (!currentUser) return <Navigate to="/login" replace />
+  if (currentUser.role !== 'admin') return <Navigate to="/dashboard" replace />
   return children
 }
 
 export default function App() {
   return (
-    <AuthProvider>
-      <CatalogProvider>
-        <RescueProvider>
-          <Router>
+    <ThemeProvider>
+      <AuthProvider>
+        <CatalogProvider>
+          <RescueProvider>
+            <Router>
             <Routes>
               {/* Public Authentication Routes */}
               <Route path="/signup" element={<SignUp />} />
@@ -107,9 +109,10 @@ export default function App() {
               {/* Catch-all redirect */}
               <Route path="*" element={<Navigate to="/login" replace />} />
             </Routes>
-          </Router>
-        </RescueProvider>
-      </CatalogProvider>
-    </AuthProvider>
+            </Router>
+          </RescueProvider>
+        </CatalogProvider>
+      </AuthProvider>
+    </ThemeProvider>
   )
 }
