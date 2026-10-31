@@ -109,7 +109,7 @@ CREATE TABLE IF NOT EXISTS invoice_items (
   FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE
 );
 
--- 7. Payments Table
+-- 8. Payments Table
 CREATE TABLE IF NOT EXISTS payments (
   id INT AUTO_INCREMENT PRIMARY KEY,
   invoice_id INT NOT NULL,

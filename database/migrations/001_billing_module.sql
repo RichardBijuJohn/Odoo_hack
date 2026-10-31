@@ -3,7 +3,9 @@
 
 ALTER TABLE invoices
   ADD COLUMN paid_amount DECIMAL(10, 2) NOT NULL DEFAULT 0.00 AFTER total_amount,
-  MODIFY COLUMN status ENUM('draft', 'pending', 'overdue', 'paid', 'canceled', 'confirmed', 'cancelled') NOT NULL DEFAULT 'draft';
+  MODIFY COLUMN status ENUM('draft', 'pending', 'overdue', 'paid', 'canceled', 'confirmed', 'cancelled') NULL DEFAULT 'draft';
+
+UPDATE invoices SET status = 'confirmed' WHERE status IS NULL;
 
 UPDATE invoices
 SET status = CASE
@@ -46,6 +48,8 @@ CREATE TABLE IF NOT EXISTS invoice_items (
   CONSTRAINT fk_invoice_items_invoice
     FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE
 );
+
+UPDATE payments SET payment_method = 'manual' WHERE payment_method IS NULL;
 
 ALTER TABLE payments
   MODIFY COLUMN payment_method ENUM('cash', 'card', 'bank_transfer', 'upi', 'credit_card', 'paypal', 'stripe', 'manual') NOT NULL DEFAULT 'card',

@@ -183,6 +183,7 @@ router.get('/:id', async (req, res, next) => {
 
 router.post('/', async (req, res, next) => {
   let connection;
+  let transactionStarted = false;
   try {
     connection = await pool.getConnection();
     const customerId = numberValue(req.body.customer_id, 'Customer', { min: 1, max: 2147483647 });
@@ -199,6 +200,7 @@ router.post('/', async (req, res, next) => {
     }
 
     await connection.beginTransaction();
+    transactionStarted = true;
     const [customerRows] = await connection.execute('SELECT id FROM customers WHERE id = ?', [customerId]);
     if (!customerRows.length) throw httpError(400, 'Selected customer does not exist.');
     if (subscriptionId) {
@@ -219,9 +221,16 @@ router.post('/', async (req, res, next) => {
     );
     await saveItems(connection, result.insertId, items);
     await connection.commit();
+    transactionStarted = false;
     res.status(201).json({ success: true, data: await getInvoice(pool, result.insertId) });
   } catch (error) {
-    if (connection) await connection.rollback();
+    if (connection && transactionStarted) {
+      try {
+        await connection.rollback();
+      } catch (rollbackError) {
+        return next(rollbackError);
+      }
+    }
     next(error);
   } finally {
     if (connection) connection.release();
@@ -230,6 +239,7 @@ router.post('/', async (req, res, next) => {
 
 router.put('/:id', async (req, res, next) => {
   let connection;
+  let transactionStarted = false;
   try {
     connection = await pool.getConnection();
     if (!/^\d+$/.test(req.params.id)) throw httpError(400, 'Invoice ID must be a positive integer.');
@@ -248,6 +258,7 @@ router.put('/:id', async (req, res, next) => {
     }
 
     await connection.beginTransaction();
+    transactionStarted = true;
     const [invoiceRows] = await connection.execute('SELECT status, paid_amount FROM invoices WHERE id = ? FOR UPDATE', [id]);
     if (!invoiceRows.length) throw httpError(404, 'Invoice not found.');
     if (invoiceRows[0].status !== 'draft') throw httpError(409, 'Only draft invoices can be edited.');
@@ -272,9 +283,16 @@ router.put('/:id', async (req, res, next) => {
     await connection.execute('DELETE FROM invoice_items WHERE invoice_id = ?', [id]);
     await saveItems(connection, id, items);
     await connection.commit();
+    transactionStarted = false;
     res.json({ success: true, data: await getInvoice(pool, id) });
   } catch (error) {
-    if (connection) await connection.rollback();
+    if (connection && transactionStarted) {
+      try {
+        await connection.rollback();
+      } catch (rollbackError) {
+        return next(rollbackError);
+      }
+    }
     next(error);
   } finally {
     if (connection) connection.release();

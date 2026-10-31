@@ -98,6 +98,7 @@ router.get('/:id', async (req, res, next) => {
 
 router.post('/', async (req, res, next) => {
   let connection;
+  let transactionStarted = false;
   try {
     connection = await pool.getConnection();
     const invoiceId = Number(req.body.invoice_id);
@@ -109,6 +110,7 @@ router.post('/', async (req, res, next) => {
 
     if (!Number.isInteger(invoiceId) || invoiceId < 1) throw httpError(400, 'Select a valid invoice.');
     if (!Number.isFinite(amount) || amount <= 0 || amount > 99999999.99) throw httpError(400, 'Payment amount must be greater than zero.');
+    if (Math.abs(amount * 100 - Math.round(amount * 100)) > 1e-7) throw httpError(400, 'Payment amount supports at most 2 decimal places.');
     if (!paymentMethods.includes(method)) throw httpError(400, 'Select a valid payment method.');
     if (reference.length > 100) throw httpError(400, 'Payment reference must be 100 characters or fewer.');
     if (note.length > 1000) throw httpError(400, 'Payment note must be 1000 characters or fewer.');
@@ -116,6 +118,7 @@ router.post('/', async (req, res, next) => {
     if (paymentCents < 1) throw httpError(400, 'Payment amount must be at least 0.01.');
 
     await connection.beginTransaction();
+    transactionStarted = true;
     const [invoiceRows] = await connection.execute(
       `SELECT id, status, total_amount, paid_amount FROM invoices WHERE id = ? FOR UPDATE`,
       [invoiceId]
@@ -144,6 +147,7 @@ router.post('/', async (req, res, next) => {
       [(newPaidCents / 100).toFixed(2), newStatus, invoiceId]
     );
     await connection.commit();
+    transactionStarted = false;
 
     const [rows] = await pool.execute(
       `SELECT p.id, CONCAT('PAY-', LPAD(p.id, 6, '0')) AS payment_number, p.invoice_id,
@@ -157,7 +161,13 @@ router.post('/', async (req, res, next) => {
     );
     res.status(201).json({ success: true, data: rows[0] });
   } catch (error) {
-    if (connection) await connection.rollback();
+    if (connection && transactionStarted) {
+      try {
+        await connection.rollback();
+      } catch (rollbackError) {
+        return next(rollbackError);
+      }
+    }
     next(error);
   } finally {
     if (connection) connection.release();
