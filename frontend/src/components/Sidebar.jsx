@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, Package, CreditCard, Users, RefreshCw,
-  FileText, Wallet, Tag, BarChart2, UserCog, Zap, ExternalLink
+  FileText, Wallet, Tag, BarChart2, UserCog, Zap, ExternalLink, Sparkles
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
@@ -9,16 +9,17 @@ export default function Sidebar() {
   const { currentUser, isAdmin } = useAuth()
 
   const navItems = [
-    { to: '/dashboard',     label: 'Dashboard',          icon: LayoutDashboard, adminOnly: false },
-    { to: '/products',      label: 'Products',           icon: Package,         adminOnly: false },
-    { to: '/plans',         label: 'Subscription Plans', icon: CreditCard,      adminOnly: false },
-    { to: '/customers',     label: 'Customers',          icon: Users,           adminOnly: false },
-    { to: '/subscriptions', label: 'Subscriptions',      icon: RefreshCw,       adminOnly: false },
-    { to: '/invoices',      label: 'Invoices',           icon: FileText,        adminOnly: false },
-    { to: '/payments',      label: 'Payments',           icon: Wallet,          adminOnly: false },
-    { to: '/discounts',     label: 'Discounts',          icon: Tag,             adminOnly: false },
-    { to: '/reports',       label: 'Reports',            icon: BarChart2,       adminOnly: false },
-    { to: '/staff',         label: 'Staff Management',   icon: UserCog,         adminOnly: false },
+    { to: '/dashboard',     label: 'Dashboard',          icon: LayoutDashboard },
+    { to: '/rescue-ai',     label: 'Rescue AI ⭐',       icon: Sparkles, highlight: true },
+    { to: '/products',      label: 'Products',           icon: Package },
+    { to: '/plans',         label: 'Subscription Plans', icon: CreditCard },
+    { to: '/customers',     label: 'Customers',          icon: Users },
+    { to: '/subscriptions', label: 'Subscriptions',      icon: RefreshCw },
+    { to: '/invoices',      label: 'Invoices',           icon: FileText },
+    { to: '/payments',      label: 'Payments',           icon: Wallet },
+    { to: '/discounts',     label: 'Discounts',          icon: Tag },
+    { to: '/reports',       label: 'Reports',            icon: BarChart2 },
+    { to: '/staff',         label: 'Staff Management',   icon: UserCog },
   ]
 
   return (
@@ -39,15 +40,17 @@ export default function Sidebar() {
       {/* Navigation Links */}
       <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider px-3 mb-3">Main Menu</p>
-        {navItems.map(({ to, label, icon: Icon }) => (
+        {navItems.map(({ to, label, icon: Icon, highlight }) => (
           <NavLink
             key={to}
             to={to}
             className={({ isActive }) =>
-              `sidebar-link ${isActive ? 'active' : ''}`
+              `sidebar-link ${isActive ? 'active' : ''} ${
+                highlight ? 'text-amber-400 font-medium' : ''
+              }`
             }
           >
-            <Icon className="w-4 h-4 flex-shrink-0" />
+            <Icon className={`w-4 h-4 flex-shrink-0 ${highlight ? 'text-amber-400' : ''}`} />
             <span>{label}</span>
           </NavLink>
         ))}
