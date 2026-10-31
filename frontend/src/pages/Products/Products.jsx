@@ -1,4 +1,4 @@
-<<<<<<< HEAD
+/*
 import { useState } from 'react'
 import { Plus, Package, Layers, DollarSign, FileText, CheckCircle, AlertCircle, X } from 'lucide-react'
 import PageHeader from '../../components/PageHeader'
@@ -108,7 +108,7 @@ export default function Products() {
         </div>
       )}
 
-      {/* Catalog Grid View */}
+      {/* Catalog Grid View * /}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {products.map((product) => (
           <div
@@ -128,7 +128,7 @@ export default function Products() {
               <h3 className="text-base font-bold text-slate-800 mb-1">{product.name}</h3>
               <p className="text-xs text-slate-500 line-clamp-2 mb-4">{product.notes || 'No description provided.'}</p>
 
-              {/* Price Breakdown */}
+              {/* Price Breakdown * /}
               <div className="bg-slate-50 rounded-xl p-3 mb-4 space-y-1 text-xs">
                 <div className="flex justify-between text-slate-600">
                   <span>Base Sales Price:</span>
@@ -147,7 +147,7 @@ export default function Products() {
                 </div>
               </div>
 
-              {/* Variants Section */}
+              {/* Variants Section * /}
               <div>
                 <p className="text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
                   <Layers className="w-3.5 h-3.5 text-blue-600" />
@@ -180,7 +180,7 @@ export default function Products() {
         ))}
       </div>
 
-      {/* Add Product Modal (Admin Exclusive) */}
+      {/* Add Product Modal (Admin Exclusive) * /}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl max-w-xl w-full border border-slate-200 overflow-hidden max-h-[90vh] flex flex-col">
@@ -277,7 +277,7 @@ export default function Products() {
                 />
               </div>
 
-              {/* Variants Builder */}
+              {/* Variants Builder * /}
               <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50">
                 <div className="flex items-center justify-between mb-3">
                   <div>
@@ -290,7 +290,7 @@ export default function Products() {
                   </div>
                 </div>
 
-                {/* Existing variants */}
+                {/* Existing variants * /}
                 <div className="space-y-2 mb-3">
                   {formData.variants.map((v) => (
                     <div
@@ -317,7 +317,7 @@ export default function Products() {
                   ))}
                 </div>
 
-                {/* Add new variant row */}
+                {/* Add new variant row * /}
                 <div className="flex gap-2 items-center">
                   <input
                     type="text"
@@ -369,7 +369,7 @@ export default function Products() {
           </div>
         </div>
       )}
-=======
+*/
 import { useCallback, useEffect, useState } from 'react'
 import {
   Archive, ArrowDown, ArrowUp, Boxes, ChevronLeft, ChevronRight, CircleAlert,
@@ -791,7 +791,6 @@ export default function Products() {
       {modal?.type === 'edit' && <ProductForm product={modal.product} categories={categories} onClose={() => setModal(null)} onSaved={refresh} onManageCategories={() => setCategoryDialogOpen(true)} />}
       {categoryManagerOpen && <CategoryManager categories={categories} onClose={() => { if (categoryDialogOpen) setCategoryDialogOpen(false); else setModal(null) }} onChanged={categoryChanged} />}
       {modal?.type === 'details' && dialogProduct && <ProductDetails product={dialogProduct} onClose={() => setModal(null)} onEdit={editFromDetails} onDelete={() => removeProduct(dialogProduct)} onStockChanged={stockChanged} />}
->>>>>>> 16143d5c5cc45687c84965c85ea3e2995625fc37
     </div>
   )
 }
