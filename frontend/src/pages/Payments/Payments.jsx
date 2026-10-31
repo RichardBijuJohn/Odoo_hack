@@ -162,7 +162,7 @@ export default function Payments() {
     .filter((payment) => !method || payment.payment_method === method)
     .filter((payment) => !from || String(payment.payment_date).slice(0, 10) >= from)
     .filter((payment) => !to || String(payment.payment_date).slice(0, 10) <= to)
-    .filter((payment) => !query || `${payment.payment_number} ${payment.invoice_number} ${payment.customer_name} ${payment.transaction_ref || ''}`.toLowerCase().includes(query.toLowerCase())), [payments, method, from, to, query])
+    .filter((payment) => !query || `${payment.payment_number} ${payment.invoice_number} ${payment.customer_name} ${payment.transaction_ref || ''} ${payment.note || ''}`.toLowerCase().includes(query.toLowerCase())), [payments, method, from, to, query])
 
   function saved(message) {
     setModal(null)
@@ -177,6 +177,7 @@ export default function Payments() {
     String(payment.payment_date).slice(0, 10),
     methodLabels[payment.payment_method] || payment.payment_method,
     <span className="font-semibold">{money(payment.amount)}</span>,
+    <span className="block max-w-48 truncate" title={payment.note || payment.transaction_ref || ''}>{payment.note || payment.transaction_ref || '—'}</span>,
     <span className={`rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${methodClass[payment.status] || methodClass.pending}`}>{payment.status}</span>,
     <button title="View payment" className="table-action" onClick={async () => {
       try {
@@ -230,7 +231,7 @@ export default function Payments() {
           </div>
         </div>
         {loading ? <LoadingSpinner text="Loading payments…" /> : (
-          <DataTable columns={['Payment ID', 'Invoice', 'Customer', 'Payment date', 'Method', 'Amount', 'Status', 'Details']} rows={rows} emptyMsg="No payments match your filters." />
+          <DataTable columns={['Payment ID', 'Invoice', 'Customer', 'Payment date', 'Method', 'Amount', 'Note / reference', 'Status', 'Details']} rows={rows} emptyMsg="No payments match your filters." />
         )}
       </div>
 

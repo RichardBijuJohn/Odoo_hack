@@ -47,8 +47,8 @@ router.get('/', async (req, res, next) => {
       parameters.push(to);
     }
     if (search) {
-      conditions.push('(CAST(p.id AS CHAR) LIKE ? OR CONCAT(\'PAY-\', LPAD(p.id, 6, \'0\')) LIKE ? OR i.invoice_number LIKE ? OR c.name LIKE ? OR p.transaction_ref LIKE ?)');
-      parameters.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+      conditions.push('(CAST(p.id AS CHAR) LIKE ? OR CONCAT(\'PAY-\', LPAD(p.id, 6, \'0\')) LIKE ? OR i.invoice_number LIKE ? OR c.name LIKE ? OR p.transaction_ref LIKE ? OR p.note LIKE ?)');
+      parameters.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
     }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
