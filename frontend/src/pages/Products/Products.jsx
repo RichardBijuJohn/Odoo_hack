@@ -247,6 +247,7 @@ export default function Products() {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [modal, setModal] = useState(null)
+  const [categoryDialogOpen, setCategoryDialogOpen] = useState(false)
   const [busyId, setBusyId] = useState(null)
 
   const loadData = useCallback(async () => {
@@ -347,7 +348,7 @@ export default function Products() {
   }
 
   const recentProduct = summary.recently_added?.[0]
-  const categoryManagerOpen = modal?.type === 'categories'
+  const categoryManagerOpen = modal?.type === 'categories' || categoryDialogOpen
   const dialogProduct = modal?.product
 
   return (
@@ -375,7 +376,7 @@ export default function Products() {
             <select aria-label="Filter by category" className="field-control" value={filters.category_id} onChange={(event) => changeFilter('category_id', event.target.value)}><option value="">All categories</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name} ({category.product_count})</option>)}</select>
             <select aria-label="Filter by stock status" className="field-control" value={filters.stock_status} onChange={(event) => changeFilter('stock_status', event.target.value)}><option value="">All stock levels</option><option value="in_stock">In stock</option><option value="low_stock">Low stock</option><option value="out_of_stock">Out of stock</option></select>
             <select aria-label="Filter by product status" className="field-control" value={filters.status} onChange={(event) => changeFilter('status', event.target.value)}><option value="">All statuses</option><option value="active">Active</option><option value="inactive">Inactive</option><option value="archived">Archived</option></select>
-            <select aria-label="Sort products" className="field-control" value={filters.sort_by} onChange={(event) => changeFilter('sort_by', event.target.value)}><option value="recent">Recently added</option><option value="name">Product name</option><option value="price">Selling price</option><option value="stock">Available stock</option></select>
+            <div className="flex gap-2"><select aria-label="Sort products" className="field-control" value={filters.sort_by} onChange={(event) => changeFilter('sort_by', event.target.value)}><option value="recent">Recently added</option><option value="name">Product name</option><option value="price">Selling price</option><option value="stock">Available stock</option></select><button type="button" className="button-secondary shrink-0 px-3" aria-label={`Sort ${filters.direction === 'asc' ? 'descending' : 'ascending'}`} title={`Sort ${filters.direction === 'asc' ? 'descending' : 'ascending'}`} onClick={() => changeFilter('direction', filters.direction === 'asc' ? 'desc' : 'asc')}>{filters.direction === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}</button></div>
           </div>
           <div className="flex justify-end"><button type="button" className="button-secondary" onClick={() => { setFilters({ search: '', category_id: '', stock_status: '', status: '', sort_by: 'recent', direction: 'desc' }); setPage(1) }}>Clear filters</button></div>
         </div>
@@ -414,9 +415,9 @@ export default function Products() {
         )}
       </section>
 
-      {modal?.type === 'create' && <ProductForm categories={categories} onClose={() => setModal(null)} onSaved={refresh} onManageCategories={() => setModal({ type: 'categories' })} />}
-      {modal?.type === 'edit' && <ProductForm product={modal.product} categories={categories} onClose={() => setModal(null)} onSaved={refresh} onManageCategories={() => setModal({ type: 'categories' })} />}
-      {categoryManagerOpen && <CategoryManager categories={categories} onClose={() => setModal(null)} onChanged={categoryChanged} />}
+      {modal?.type === 'create' && <ProductForm categories={categories} onClose={() => setModal(null)} onSaved={refresh} onManageCategories={() => setCategoryDialogOpen(true)} />}
+      {modal?.type === 'edit' && <ProductForm product={modal.product} categories={categories} onClose={() => setModal(null)} onSaved={refresh} onManageCategories={() => setCategoryDialogOpen(true)} />}
+      {categoryManagerOpen && <CategoryManager categories={categories} onClose={() => { if (categoryDialogOpen) setCategoryDialogOpen(false); else setModal(null) }} onChanged={categoryChanged} />}
       {modal?.type === 'details' && dialogProduct && <ProductDetails product={dialogProduct} onClose={() => setModal(null)} onEdit={editFromDetails} onDelete={() => removeProduct(dialogProduct)} onStockChanged={stockChanged} />}
     </div>
   )

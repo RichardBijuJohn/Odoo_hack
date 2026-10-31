@@ -151,6 +151,14 @@ Only draft invoices can be edited or confirmed. Payments require a confirmed inv
 4. Create an invoice with one or more items; confirm it and open `/payments`.
 5. Record a partial payment and verify the invoice remains confirmed with a reduced balance. Record the remaining amount and verify it becomes paid.
 
+## Products and Inventory
+
+- For a **new** database, import the updated root `database.sql`.
+- For an **existing** database, apply `database/migrations/003_products_inventory.sql` once after the core schema. This adds product categories, cost and stock fields, and stock movement history without replacing products.
+- Product images use an HTTP or HTTPS image URL; this project does not configure file or object storage uploads.
+- Product endpoints include `GET /api/products` (search, filters, sorting, pagination), `GET /api/products/summary`, `GET /api/products/categories`, category CRUD, product CRUD, `GET /api/products/:id`, and `PATCH /api/products/:id/stock`.
+- The current authentication routes are stubs, so the app does not yet have a real user identity or role-based permission enforcement for product changes.
+
 ---
 
 ## 🌿 Git Collaboration Rules
