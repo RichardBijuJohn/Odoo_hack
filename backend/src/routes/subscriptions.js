@@ -1,303 +1,257 @@
 const express = require('express');
-const router = express.Router();
 const pool = require('../config/db');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, requireAuth } = require('../middleware/auth');
 
-// Attach user authentication context
+const router = express.Router();
 router.use(authenticate);
+router.use(requireAuth);
 
-// Date format validation helper. Accepts both ISO and localized day-first strings.
-const normalizeDateString = (dateString) => {
-  if (typeof dateString !== 'string') return '';
+const STATUSES = ['pending', 'active', 'expired', 'cancelled'];
+const BILLING_CYCLES = ['daily', 'weekly', 'monthly', 'yearly'];
 
-  const isoMatch = /^\d{4}-\d{2}-\d{2}$/.exec(dateString);
-  if (isoMatch) return dateString;
+function httpError(status, message) {
+  const error = new Error(message);
+  error.status = status;
+  return error;
+}
 
-  const localMatch = /^\d{2}-\d{2}-\d{4}$/.exec(dateString);
-  if (!localMatch) return '';
+function parseId(value, label) {
+  const id = Number.parseInt(value, 10);
+  if (!Number.isInteger(id) || id < 1) throw httpError(400, `${label} must be a positive integer.`);
+  return id;
+}
 
-  const [day, month, year] = dateString.split('-').map(Number);
-  if (!day || !month || !year) return '';
+function parseDate(value, label) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))) {
+    throw httpError(400, `${label} must use YYYY-MM-DD format.`);
+  }
+  const date = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) throw httpError(400, `${label} is invalid.`);
+  return String(value);
+}
 
-  const normalized = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-  const d = new Date(`${normalized}T00:00:00`);
-  return d instanceof Date && !isNaN(d.getTime()) ? normalized : '';
-};
+function addPeriods(dateString, cycle, duration) {
+  const date = new Date(`${dateString}T00:00:00Z`);
+  if (cycle === 'daily') date.setUTCDate(date.getUTCDate() + duration);
+  if (cycle === 'weekly') date.setUTCDate(date.getUTCDate() + (duration * 7));
+  if (cycle === 'monthly') date.setUTCMonth(date.getUTCMonth() + duration);
+  if (cycle === 'yearly') date.setUTCFullYear(date.getUTCFullYear() + duration);
+  return date.toISOString().slice(0, 10);
+}
 
-const isValidDate = (dateString) => {
-  return !!normalizeDateString(dateString);
-};
-
-const BASE_SUBSCRIPTION_SELECT = `
-  SELECT 
-    s.id,
-    s.customer_id,
-    s.plan_id,
+const selectSubscription = `
+  SELECT s.id, s.user_id AS customer_id, s.plan_id, s.quantity,
     DATE_FORMAT(s.start_date, '%Y-%m-%d') AS start_date,
     DATE_FORMAT(s.end_date, '%Y-%m-%d') AS end_date,
+    s.billing_cycle, s.duration, s.original_amount, s.discount_amount,
+    s.final_amount, s.payment_status,
     DATE_FORMAT(s.next_billing_date, '%Y-%m-%d') AS next_billing_date,
-    s.status,
-    s.created_at,
-    s.updated_at,
-    c.name AS customer_name,
-    c.email AS customer_email,
-    c.company_name AS customer_company,
-    p.name AS plan_name,
-    p.billing_cycle AS plan_billing_cycle,
-    p.price AS plan_price,
-    p.currency AS plan_currency
+    s.status, s.cancellation_reason, s.notes, s.created_at, s.updated_at,
+    u.name AS customer_name, u.email AS customer_email, u.company_name AS customer_company,
+    p.name AS plan_name, p.price AS plan_price, p.currency AS plan_currency,
+    p.billing_cycle AS plan_billing_cycle, p.product_id,
+    pr.name AS product_name,
+    i.id AS invoice_id, i.invoice_number, i.status AS invoice_status,
+    i.total_amount AS invoice_total, DATE_FORMAT(i.due_date, '%Y-%m-%d') AS invoice_due_date
   FROM subscriptions s
-  JOIN customers c ON s.customer_id = c.id
-  JOIN plans p ON s.plan_id = p.id
+  JOIN users u ON u.id = s.user_id
+  JOIN plans p ON p.id = s.plan_id
+  LEFT JOIN products pr ON pr.id = p.product_id
+  LEFT JOIN invoices i ON i.subscription_id = s.id
 `;
 
-/**
- * GET /api/subscriptions
- * Return subscriptions with joined customer and plan information.
- * - Customer role: strictly scoped to their own subscriptions.
- * - Attempting to request another customer's data returns 403.
- * - Staff/Admin: can view all subscriptions or filter by customer_id/status.
- */
+function canAccess(subscription, user) {
+  return user.role !== 'customer' || subscription.customer_id === user.id || subscription.customerId === subscription.customer_id;
+}
+
+async function findSubscription(id) {
+  const [rows] = await pool.query(`${selectSubscription} WHERE s.id = ?`, [id]);
+  return rows[0];
+}
+
+router.get('/options', async (req, res, next) => {
+  try {
+    const [plans] = await pool.query(
+      `SELECT id, name, price, currency, billing_cycle, trial_days, user_limit, product_id
+       FROM plans WHERE LOWER(status) = 'active' ORDER BY name`
+    );
+    const [customers] = req.user.role === 'customer'
+      ? await pool.query('SELECT id, name, email, company_name FROM users WHERE id = ? AND role = \'customer\'', [req.user.id])
+      : await pool.query('SELECT id, name, email, company_name FROM users WHERE role = \'customer\' AND status = \'active\' ORDER BY name');
+    res.json({ success: true, data: { plans, customers } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/summary', async (req, res, next) => {
+  try {
+    const scope = req.user.role === 'customer' ? 'WHERE s.user_id = ?' : '';
+    const params = req.user.role === 'customer' ? [req.user.id] : [];
+    const [rows] = await pool.query(
+      `SELECT COUNT(*) AS total,
+        SUM(status = 'active') AS active, SUM(status = 'pending') AS pending,
+        SUM(status = 'expired') AS expired, SUM(status = 'cancelled') AS cancelled
+       FROM subscriptions s ${scope}`,
+      params
+    );
+    res.json({ success: true, data: rows[0] });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get('/', async (req, res, next) => {
   try {
-    const { customer_id, status } = req.query;
-
-    // Security check: if customer role, prevent IDOR access to another customer's data
-    if (req.user && req.user.role === 'customer') {
-      if (!req.user.customerId) {
-        return res.status(403).json({
-          success: false,
-          message: 'Access denied. No customer profile linked to this user.'
-        });
-      }
-
-      // If customer requested a specific customer_id that is NOT their own, deny access
-      if (customer_id && parseInt(customer_id, 10) !== req.user.customerId) {
-        return res.status(403).json({
-          success: false,
-          message: 'Access denied. You cannot view subscriptions of another customer.'
-        });
-      }
-
-      // Force filter strictly to this customer's own subscriptions
-      let query = `${BASE_SUBSCRIPTION_SELECT} WHERE s.customer_id = ?`;
-      const params = [req.user.customerId];
-
-      if (status) {
-        query += ' AND s.status = ?';
-        params.push(status);
-      }
-
-      query += ' ORDER BY s.created_at DESC';
-
-      const [rows] = await pool.query(query, params);
-      return res.status(200).json({
-        success: true,
-        count: rows.length,
-        data: rows
-      });
-    }
-
-    // Staff/Admin or general development access
-    let query = `${BASE_SUBSCRIPTION_SELECT} WHERE 1=1`;
+    const { status, plan_id, search, sort = 'created_at', direction = 'desc' } = req.query;
+    const conditions = [];
     const params = [];
-
-    if (customer_id) {
-      query += ' AND s.customer_id = ?';
-      params.push(parseInt(customer_id, 10));
+    if (req.user.role === 'customer') {
+      conditions.push('s.user_id = ?');
+      params.push(req.user.id);
     }
-
-    if (status) {
-      query += ' AND s.status = ?';
-      params.push(status);
+    if (status && STATUSES.includes(String(status).toLowerCase())) {
+      conditions.push('s.status = ?');
+      params.push(String(status).toLowerCase());
     }
-
-    query += ' ORDER BY s.created_at DESC';
-
-    const [rows] = await pool.query(query, params);
-
-    return res.status(200).json({
-      success: true,
-      count: rows.length,
-      data: rows
-    });
+    if (plan_id) {
+      conditions.push('s.plan_id = ?');
+      params.push(parseId(plan_id, 'plan_id'));
+    }
+    if (search) {
+      conditions.push('(u.name LIKE ? OR u.email LIKE ? OR CAST(s.id AS CHAR) LIKE ?)');
+      const term = `%${String(search).trim()}%`;
+      params.push(term, term, term);
+    }
+    const sortColumn = { created_at: 's.created_at', start_date: 's.start_date', end_date: 's.end_date' }[sort] || 's.created_at';
+    const sortDirection = direction === 'asc' ? 'ASC' : 'DESC';
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const [rows] = await pool.query(`${selectSubscription} ${where} ORDER BY ${sortColumn} ${sortDirection}`, params);
+    res.json({ success: true, count: rows.length, data: rows });
   } catch (error) {
     next(error);
   }
 });
 
-/**
- * GET /api/subscriptions/:id
- * Return a single subscription by ID with joined customer and plan data.
- * - Enforces role-based customer ownership check.
- */
 router.get('/:id', async (req, res, next) => {
   try {
-    const subId = parseInt(req.params.id, 10);
-    if (isNaN(subId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid subscription ID provided.'
-      });
-    }
-
-    const [rows] = await pool.query(
-      `${BASE_SUBSCRIPTION_SELECT} WHERE s.id = ?`,
-      [subId]
-    );
-
-    if (rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: `Subscription with ID ${subId} not found.`
-      });
-    }
-
-    const subscription = rows[0];
-
-    // Customer ownership boundary check
-    if (req.user && req.user.role === 'customer' && req.user.customerId !== subscription.customer_id) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied. You cannot view another customer’s subscription.'
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      data: subscription
-    });
+    const subscription = await findSubscription(parseId(req.params.id, 'Subscription ID'));
+    if (!subscription) throw httpError(404, 'Subscription not found.');
+    if (!canAccess(subscription, req.user)) throw httpError(403, 'You cannot access another customer\'s subscription.');
+    res.json({ success: true, data: subscription });
   } catch (error) {
     next(error);
   }
 });
 
-/**
- * POST /api/subscriptions
- * Creates a real subscription in the database.
- * - Validates customer exists in `customers` table.
- * - Validates plan exists in `plans` table.
- * - Validates start_date, end_date, next_billing_date, and status.
- * - Enforces customer ownership: customers cannot create subscriptions for other customers.
- */
 router.post('/', async (req, res, next) => {
+  const connection = await pool.getConnection();
   try {
-    const { customer_id, plan_id, start_date, end_date, next_billing_date, status } = req.body;
-    const normalizedStartDate = normalizeDateString(start_date);
-    const normalizedEndDate = normalizeDateString(end_date);
-    const normalizedNextBillingDate = normalizeDateString(next_billing_date);
+    const customerId = req.user.role === 'customer' ? req.user.id : parseId(req.body.customer_id, 'customer_id');
+    const planId = parseId(req.body.plan_id, 'plan_id');
+    const startDate = parseDate(req.body.start_date || new Date().toISOString().slice(0, 10), 'start_date');
+    const duration = Number.parseInt(req.body.duration, 10) || 1;
+    const quantity = Number.parseInt(req.body.quantity, 10) || 1;
+    if (duration < 1 || duration > 120 || quantity < 1) throw httpError(400, 'Duration and quantity must be positive values.');
 
-    // 1. Validate customer_id
-    if (!customer_id || isNaN(parseInt(customer_id, 10))) {
-      return res.status(400).json({
-        success: false,
-        message: 'A valid customer_id (integer) is required.'
-      });
-    }
-    const customerIdNum = parseInt(customer_id, 10);
-
-    // Security check: customer role cannot subscribe another customer
-    if (req.user && req.user.role === 'customer' && req.user.customerId !== customerIdNum) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied. You cannot create a subscription for another customer.'
-      });
-    }
-
-    // 2. Validate plan_id
-    if (!plan_id || isNaN(parseInt(plan_id, 10))) {
-      return res.status(400).json({
-        success: false,
-        message: 'A valid plan_id (integer) is required.'
-      });
-    }
-    const planIdNum = parseInt(plan_id, 10);
-
-    // 3. Validate start_date
-    if (!normalizedStartDate) {
-      return res.status(400).json({
-        success: false,
-        message: 'A valid start_date in YYYY-MM-DD or DD-MM-YYYY format is required.'
-      });
-    }
-
-    // 4. Validate end_date if provided
-    if (end_date !== undefined && end_date !== null && end_date !== '') {
-      if (!normalizedEndDate) {
-        return res.status(400).json({
-          success: false,
-          message: 'end_date must be in YYYY-MM-DD or DD-MM-YYYY format.'
-        });
-      }
-      if (new Date(normalizedEndDate) < new Date(normalizedStartDate)) {
-        return res.status(400).json({
-          success: false,
-          message: 'end_date must be on or after start_date.'
-        });
-      }
-    }
-
-    // 5. Validate next_billing_date if provided
-    if (next_billing_date !== undefined && next_billing_date !== null && next_billing_date !== '') {
-      if (!normalizedNextBillingDate) {
-        return res.status(400).json({
-          success: false,
-          message: 'next_billing_date must be in YYYY-MM-DD or DD-MM-YYYY format.'
-        });
-      }
-    }
-
-    // 6. Validate status if provided
-    const validStatuses = ['active', 'trial', 'paused', 'canceled', 'expired'];
-    const subStatus = status ? status.toLowerCase() : 'trial';
-    if (!validStatuses.includes(subStatus)) {
-      return res.status(400).json({
-        success: false,
-        message: `Invalid status. Allowed values are: ${validStatuses.join(', ')}.`
-      });
-    }
-
-    // 7. Verify customer exists in database
-    const [customerRows] = await pool.query('SELECT id, name, email FROM customers WHERE id = ?', [customerIdNum]);
-    if (customerRows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: `Customer with ID ${customerIdNum} does not exist.`
-      });
-    }
-
-    // 8. Verify plan exists in database
-    const [planRows] = await pool.query('SELECT id, name, price, billing_cycle FROM plans WHERE id = ?', [planIdNum]);
-    if (planRows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: `Plan with ID ${planIdNum} does not exist.`
-      });
-    }
-
-    // 9. Insert subscription
-    const cleanEndDate = normalizedEndDate || null;
-    const cleanNextBilling = normalizedNextBillingDate || null;
-
-    const [insertResult] = await pool.query(
-      `INSERT INTO subscriptions (customer_id, plan_id, start_date, end_date, next_billing_date, status)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [customerIdNum, planIdNum, normalizedStartDate, cleanEndDate, cleanNextBilling, subStatus]
+    const [users] = await connection.query('SELECT id FROM users WHERE id = ? AND role = \'customer\' AND status = \'active\'', [customerId]);
+    if (!users.length) throw httpError(404, 'Customer account not found.');
+    const [plans] = await connection.query(
+      `SELECT id, price, currency, billing_cycle FROM plans WHERE id = ? AND LOWER(status) = 'active'`,
+      [planId]
     );
+    if (!plans.length) throw httpError(400, 'Only published subscription plans can be selected.');
+    const plan = plans[0];
+    const cycle = BILLING_CYCLES.includes(req.body.billing_cycle) ? req.body.billing_cycle : plan.billing_cycle;
+    const originalAmount = Number(plan.price) * quantity;
+    const discountAmount = Math.min(Math.max(Number(req.body.discount_amount) || 0, 0), originalAmount);
+    const finalAmount = Math.max(originalAmount - discountAmount, 0);
+    const endDate = addPeriods(startDate, cycle, duration);
+    const nextBillingDate = endDate;
 
-    // 10. Fetch inserted subscription with JOINed customer and plan details
-    const [createdRows] = await pool.query(
-      `${BASE_SUBSCRIPTION_SELECT} WHERE s.id = ?`,
-      [insertResult.insertId]
+    await connection.beginTransaction();
+    const [result] = await connection.query(
+      `INSERT INTO subscriptions
+        (user_id, plan_id, quantity, start_date, end_date, billing_cycle, duration,
+         original_amount, discount_amount, final_amount, payment_status, next_billing_date, status, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 'pending', ?)`,
+      [customerId, planId, quantity, startDate, endDate, cycle, duration, originalAmount, discountAmount, finalAmount, nextBillingDate, req.body.notes || null]
     );
+    await connection.query(
+      `INSERT INTO invoices
+       (subscription_id, user_id, invoice_number, amount, tax_amount, total_amount, status, issue_date, due_date)
+       VALUES (?, ?, ?, ?, 0, ?, 'pending', ?, ?)`,
+      [result.insertId, customerId, `INV-${Date.now()}-${result.insertId}`, finalAmount, finalAmount, startDate, endDate]
+    );
+    await connection.commit();
+    res.status(201).json({ success: true, message: 'Subscription created and awaiting payment confirmation.', data: await findSubscription(result.insertId) });
+  } catch (error) {
+    await connection.rollback();
+    next(error);
+  } finally {
+    connection.release();
+  }
+});
 
-    return res.status(201).json({
-      success: true,
-      message: 'Subscription created successfully.',
-      data: createdRows[0]
-    });
+router.patch('/:id/cancel', async (req, res, next) => {
+  try {
+    const id = parseId(req.params.id, 'Subscription ID');
+    const subscription = await findSubscription(id);
+    if (!subscription) throw httpError(404, 'Subscription not found.');
+    if (!canAccess(subscription, req.user)) throw httpError(403, 'You cannot cancel another customer\'s subscription.');
+    if (!['pending', 'active'].includes(subscription.status)) throw httpError(400, 'Only pending or active subscriptions can be cancelled.');
+    await pool.query('UPDATE subscriptions SET status = \'cancelled\', cancellation_reason = ? WHERE id = ?', [req.body.reason || null, id]);
+    res.json({ success: true, data: await findSubscription(id) });
   } catch (error) {
     next(error);
+  }
+});
+
+router.patch('/:id/confirm-payment', async (req, res, next) => {
+  try {
+    if (req.user.role === 'customer') throw httpError(403, 'Payment confirmation requires staff or admin access.');
+    const id = parseId(req.params.id, 'Subscription ID');
+    const subscription = await findSubscription(id);
+    if (!subscription) throw httpError(404, 'Subscription not found.');
+    if (subscription.status !== 'pending') throw httpError(400, 'Only pending subscriptions can be activated.');
+    await pool.query('UPDATE subscriptions SET status = \'active\', payment_status = \'paid\' WHERE id = ?', [id]);
+    res.json({ success: true, data: await findSubscription(id) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/:id/renew', async (req, res, next) => {
+  const connection = await pool.getConnection();
+  try {
+    const id = parseId(req.params.id, 'Subscription ID');
+    const current = await findSubscription(id);
+    if (!current) throw httpError(404, 'Subscription not found.');
+    if (!canAccess(current, req.user)) throw httpError(403, 'You cannot renew another customer\'s subscription.');
+    if (current.status === 'cancelled') throw httpError(400, 'Cancelled subscriptions cannot be renewed.');
+    const startDate = current.end_date && current.end_date > new Date().toISOString().slice(0, 10) ? current.end_date : new Date().toISOString().slice(0, 10);
+    const endDate = addPeriods(startDate, current.billing_cycle, current.duration);
+    await connection.beginTransaction();
+    const [result] = await connection.query(
+      `INSERT INTO subscriptions
+       (user_id, plan_id, quantity, start_date, end_date, billing_cycle, duration,
+        original_amount, discount_amount, final_amount, payment_status, next_billing_date, status, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 'pending', ?, 'pending', ?)`,
+      [current.customer_id, current.plan_id, current.quantity, startDate, endDate, current.billing_cycle, current.duration, Number(current.plan_price) * current.quantity, Number(current.plan_price) * current.quantity, endDate, `Renewal of subscription #${current.id}`]
+    );
+    await connection.query(
+      `INSERT INTO invoices
+       (subscription_id, user_id, invoice_number, amount, tax_amount, total_amount, status, issue_date, due_date)
+       VALUES (?, ?, ?, ?, 0, ?, 'pending', ?, ?)`,
+      [result.insertId, current.customer_id, `INV-${Date.now()}-${result.insertId}`, Number(current.plan_price) * current.quantity, Number(current.plan_price) * current.quantity, startDate, endDate]
+    );
+    await connection.commit();
+    res.status(201).json({ success: true, data: await findSubscription(result.insertId) });
+  } catch (error) {
+    await connection.rollback();
+    next(error);
+  } finally {
+    connection.release();
   }
 });
 
