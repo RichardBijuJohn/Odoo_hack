@@ -84,7 +84,8 @@ CREATE TABLE IF NOT EXISTS invoices (
   amount DECIMAL(10, 2) NOT NULL,
   tax_amount DECIMAL(10, 2) DEFAULT 0.00,
   total_amount DECIMAL(10, 2) NOT NULL,
-  status ENUM('draft', 'pending', 'paid', 'overdue', 'canceled') DEFAULT 'pending',
+  paid_amount DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+  status ENUM('draft', 'confirmed', 'paid', 'cancelled') NOT NULL DEFAULT 'draft',
   issue_date DATE NOT NULL,
   due_date DATE NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -93,19 +94,35 @@ CREATE TABLE IF NOT EXISTS invoices (
   FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE RESTRICT
 );
 
--- 7. Payments Table
+-- 7. Invoice Line Items
+CREATE TABLE IF NOT EXISTS invoice_items (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  invoice_id INT NOT NULL,
+  description VARCHAR(500) NOT NULL,
+  quantity DECIMAL(10, 3) NOT NULL,
+  unit_price DECIMAL(10, 2) NOT NULL,
+  tax_percentage DECIMAL(5, 2) NOT NULL DEFAULT 0.00,
+  subtotal DECIMAL(10, 2) NOT NULL,
+  tax_amount DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+  total_amount DECIMAL(10, 2) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE
+);
+
+-- 8. Payments Table
 CREATE TABLE IF NOT EXISTS payments (
   id INT AUTO_INCREMENT PRIMARY KEY,
   invoice_id INT NOT NULL,
   amount DECIMAL(10, 2) NOT NULL,
-  payment_method ENUM('credit_card', 'paypal', 'bank_transfer', 'stripe', 'manual') DEFAULT 'credit_card',
+  payment_method ENUM('cash', 'card', 'bank_transfer', 'upi', 'credit_card', 'paypal', 'stripe', 'manual') DEFAULT 'card',
   transaction_ref VARCHAR(100),
+  note VARCHAR(1000),
   status ENUM('completed', 'pending', 'failed', 'refunded') DEFAULT 'completed',
   payment_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE
 );
 
--- 8. Discounts Table
+-- 9. Discounts Table
 CREATE TABLE IF NOT EXISTS discounts (
   id INT AUTO_INCREMENT PRIMARY KEY,
   code VARCHAR(50) NOT NULL UNIQUE,

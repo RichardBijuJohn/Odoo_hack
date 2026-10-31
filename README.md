@@ -122,6 +122,35 @@ npm run dev
 ```
 Frontend runs on `http://localhost:5173`.
 
+## Billing: Invoices & Payments
+
+The billing screens use the existing `customers`, `subscriptions`, `invoices`, and `payments` tables. Invoice rows store customer/subscription IDs (not copied customer records), and invoice line items are stored separately. Payments update `invoices.paid_amount` and transition a confirmed invoice to `paid` only when its full balance has been received.
+
+### Database setup
+
+- For a **new** database, import the updated root `database.sql`.
+- For an **existing** database created from the original schema, apply `database/migrations/001_billing_module.sql` once.
+- If the database has no customer records while the Customers module is still in progress, optionally run `database/billing_demo_seed.sql`. This seeds two rows into the existing customers table; it does not create another customer table.
+
+### Billing endpoints
+
+- `GET /api/invoices` (supports `search`, `status`, `sort_by`, and `direction`)
+- `GET /api/invoices/options` (active customers and subscriptions for the invoice form)
+- `GET /api/invoices/:id`, `POST /api/invoices`, `PUT /api/invoices/:id`
+- `PATCH /api/invoices/:id/confirm`, `PATCH /api/invoices/:id/cancel`
+- `GET /api/payments` (supports `search`, `method`, `from`, and `to`)
+- `GET /api/payments/:id`, `POST /api/payments`
+
+Only draft invoices can be edited or confirmed. Payments require a confirmed invoice, support partial amounts, reject overpayments, and are committed together with the invoice balance update in a database transaction. An invoice with recorded payments cannot be cancelled.
+
+### Billing workflow smoke test
+
+1. Start MySQL and import/apply the appropriate schema above.
+2. Ensure at least one active customer exists (or import the optional demo seed).
+3. Start the backend and frontend using the Quick Start commands, then open `/invoices`.
+4. Create an invoice with one or more items; confirm it and open `/payments`.
+5. Record a partial payment and verify the invoice remains confirmed with a reduced balance. Record the remaining amount and verify it becomes paid.
+
 ---
 
 ## 🌿 Git Collaboration Rules
