@@ -22,6 +22,7 @@ const blankForm = () => ({
   subscription_id: '',
   issue_date: today(),
   due_date: today(),
+  discount_code: '',
   items: [blankItem()],
 })
 
@@ -52,6 +53,7 @@ function InvoiceForm({ customers, subscriptions, invoice, onClose, onSaved }) {
       subscription_id: invoice.subscription_id ? String(invoice.subscription_id) : '',
       issue_date: String(invoice.issue_date).slice(0, 10),
       due_date: String(invoice.due_date).slice(0, 10),
+      discount_code: '',
       items: invoice.items.map((item) => ({
         description: item.description,
         quantity: String(item.quantity),
@@ -117,6 +119,9 @@ function InvoiceForm({ customers, subscriptions, invoice, onClose, onSaved }) {
           <label className="field-label">Due date
             <input className="field-control" type="date" required min={form.issue_date} value={form.due_date} onChange={(event) => setForm((current) => ({ ...current, due_date: event.target.value }))} />
           </label>
+          <label className="field-label">Discount code (optional)
+            <input className="field-control" placeholder="e.g. SUMMER20" value={form.discount_code} onChange={(event) => setForm((current) => ({ ...current, discount_code: event.target.value.toUpperCase() }))} />
+          </label>
         </div>
 
         <div>
@@ -153,6 +158,7 @@ function InvoiceForm({ customers, subscriptions, invoice, onClose, onSaved }) {
         <div className="rounded-lg bg-slate-50 p-4 text-sm">
           <div className="flex justify-between py-1"><span className="text-slate-500">Subtotal</span><span>{money(totals.subtotal)}</span></div>
           <div className="flex justify-between py-1"><span className="text-slate-500">Tax</span><span>{money(totals.tax)}</span></div>
+          <div className="flex justify-between py-1"><span className="text-slate-500">Discount</span><span className="text-emerald-700">Applied on save</span></div>
           <div className="mt-2 flex justify-between border-t border-slate-200 pt-3 font-bold text-slate-800"><span>Total</span><span>{money(totals.subtotal + totals.tax)}</span></div>
         </div>
         <div className="flex justify-end gap-3 border-t border-slate-100 pt-4">
@@ -196,6 +202,7 @@ function InvoiceDetails({ invoice, onClose }) {
       <div className="mt-4 ml-auto max-w-xs space-y-2 text-sm">
         <div className="flex justify-between"><span className="text-slate-500">Subtotal</span><span>{money(invoice.amount)}</span></div>
         <div className="flex justify-between"><span className="text-slate-500">Tax</span><span>{money(invoice.tax_amount)}</span></div>
+        <div className="flex justify-between py-1"><span>Discount{invoice.discount_name ? ` (${invoice.discount_name})` : ''}</span><span className="text-emerald-700">-{money(invoice.discount_amount)}</span></div>
         <div className="flex justify-between font-bold"><span>Total</span><span>{money(invoice.total_amount)}</span></div>
         <div className="flex justify-between"><span className="text-slate-500">Paid</span><span>{money(invoice.paid_amount)}</span></div>
         <div className="flex justify-between font-semibold text-amber-700"><span>Outstanding</span><span>{money(invoice.balance_due ?? Number(invoice.total_amount) - Number(invoice.paid_amount))}</span></div>

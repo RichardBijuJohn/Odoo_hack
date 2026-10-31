@@ -47,6 +47,13 @@ function CustomerRoute({ children }) {
   if (!currentUser) {
     return <Navigate to="/login" replace />
   }
+
+  function AdminRoute({ children }) {
+    const { currentUser } = useAuth()
+    if (!currentUser) return <Navigate to="/login" replace />
+    if (currentUser.role !== 'admin') return <Navigate to="/dashboard" replace />
+    return children
+  }
   return children
 }
 
@@ -92,7 +99,7 @@ export default function App() {
                 <Route path="subscriptions" element={<Subscriptions />} />
                 <Route path="invoices" element={<Invoices />} />
                 <Route path="payments" element={<Payments />} />
-                <Route path="discounts" element={<Discounts />} />
+                <Route path="discounts" element={<AdminRoute><Discounts /></AdminRoute>} />
                 <Route path="reports" element={<Reports />} />
                 <Route path="staff" element={<Staff />} />
               </Route>

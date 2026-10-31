@@ -1,6 +1,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const pool = require('../config/db');
+const { calculateDiscount } = require('../services/discountService');
 
 const router = express.Router();
 const invoiceStatuses = ['draft', 'confirmed', 'paid', 'cancelled'];
@@ -64,6 +65,7 @@ function parseItems(items) {
 
     return {
       description,
+      productId: item.product_id ? numberValue(item.product_id, `Item ${index + 1} product`, { min: 1, max: 2147483647 }) : null,
       quantity,
       unitPrice,
       taxPercentage,
@@ -82,9 +84,9 @@ async function saveItems(connection, invoiceId, items) {
   for (const item of items) {
     await connection.execute(
       `INSERT INTO invoice_items
-        (invoice_id, description, quantity, unit_price, tax_percentage, subtotal, tax_amount, total_amount)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [invoiceId, item.description, item.quantity, item.unitPrice, item.taxPercentage, item.subtotal, item.taxAmount, item.total]
+        (invoice_id, product_id, description, quantity, unit_price, tax_percentage, subtotal, tax_amount, total_amount)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [invoiceId, item.productId, item.description, item.quantity, item.unitPrice, item.taxPercentage, item.subtotal, item.taxAmount, item.total]
     );
   }
 }
@@ -99,7 +101,7 @@ async function getInvoice(connection, id) {
   if (!rows.length) return null;
 
   const [items] = await connection.execute(
-    `SELECT id, description, quantity, unit_price, tax_percentage, subtotal, tax_amount, total_amount
+    `SELECT id, product_id, description, quantity, unit_price, tax_percentage, subtotal, tax_amount, total_amount
      FROM invoice_items WHERE invoice_id = ? ORDER BY id`,
     [id]
   );
@@ -148,7 +150,7 @@ router.get('/', async (req, res, next) => {
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const [invoices] = await pool.execute(
       `SELECT i.id, i.invoice_number, i.customer_id, c.name AS customer_name, c.email AS customer_email,
-              i.subscription_id, i.amount, i.tax_amount, i.total_amount, i.paid_amount,
+              i.subscription_id, i.amount, i.tax_amount, i.discount_id, i.discount_name, i.discount_amount, i.total_amount, i.paid_amount,
               GREATEST(i.total_amount - i.paid_amount, 0) AS balance_due,
               i.status, i.issue_date, i.due_date, i.created_at
        FROM invoices i JOIN customers c ON c.id = i.customer_id
@@ -194,11 +196,8 @@ router.post('/', async (req, res, next) => {
     const items = parseItems(req.body.items);
     const subtotal = roundMoney(items.reduce((sum, item) => sum + item.subtotal, 0));
     const taxAmount = roundMoney(items.reduce((sum, item) => sum + item.taxAmount, 0));
-    const total = roundMoney(items.reduce((sum, item) => sum + item.total, 0));
-    if (subtotal > 99999999.99 || taxAmount > 99999999.99 || total > 99999999.99) {
-      throw httpError(400, 'Invoice total exceeds the maximum supported amount.');
-    }
-
+    const productIds = items.map((item) => item.productId).filter(Boolean);
+    const quantity = items.reduce((sum, item) => sum + item.quantity, 0);
     await connection.beginTransaction();
     transactionStarted = true;
     const [customerRows] = await connection.execute('SELECT id FROM customers WHERE id = ?', [customerId]);
@@ -212,12 +211,31 @@ router.post('/', async (req, res, next) => {
         throw httpError(400, 'Selected subscription does not belong to this customer.');
       }
     }
+    let planId = null;
+    if (subscriptionId) {
+      const [planRows] = await connection.execute('SELECT plan_id FROM subscriptions WHERE id = ?', [subscriptionId]);
+      planId = planRows[0]?.plan_id || null;
+    }
+    const discountResult = await calculateDiscount(connection, {
+      code: req.body.discount_code,
+      eligibleAmount: subtotal,
+      quantity,
+      productIds,
+      planId,
+      lineItems: items,
+      incrementUsage: Boolean(req.body.discount_code),
+    });
+    const discountAmount = discountResult.discountAmount;
+    const total = roundMoney(subtotal - discountAmount + taxAmount);
+    if (subtotal > 99999999.99 || taxAmount > 99999999.99 || total > 99999999.99) {
+      throw httpError(400, 'Invoice total exceeds the maximum supported amount.');
+    }
 
     const [result] = await connection.execute(
       `INSERT INTO invoices
-        (subscription_id, customer_id, invoice_number, amount, tax_amount, total_amount, paid_amount, status, issue_date, due_date)
-       VALUES (?, ?, ?, ?, ?, ?, 0, 'draft', ?, ?)`,
-      [subscriptionId, customerId, invoiceNumber(), subtotal, taxAmount, total, issueDate, dueDate]
+        (subscription_id, customer_id, invoice_number, amount, tax_amount, discount_id, discount_name, discount_amount, total_amount, paid_amount, status, issue_date, due_date)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'draft', ?, ?)`,
+      [subscriptionId, customerId, invoiceNumber(), subtotal, taxAmount, discountResult.discount?.id || null, discountResult.discount?.name || null, discountAmount, total, issueDate, dueDate]
     );
     await saveItems(connection, result.insertId, items);
     await connection.commit();
