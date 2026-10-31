@@ -1,13 +1,15 @@
-import { Users, RefreshCw, DollarSign, FileText } from 'lucide-react'
+import { Users, RefreshCw, DollarSign, FileText, Sparkles, AlertTriangle, ArrowRight } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import StatCard from '../../components/StatCard'
 import PageHeader from '../../components/PageHeader'
 import DataTable from '../../components/DataTable'
+import { useRescue } from '../../context/RescueContext'
 
 const stats = [
   {
     title: 'Total Customers',
-    value: '1,284',
-    subtitle: 'Registered accounts',
+    value: '1,000',
+    subtitle: 'Analyzed by Rescue AI',
     change: 12.5,
     icon: Users,
     iconColor: 'bg-blue-100',
@@ -66,6 +68,8 @@ const revenueData = [
 const maxRevenue = Math.max(...revenueData.map(d => d.value))
 
 export default function Dashboard() {
+  const { stats: rescueStats, customers: rescueCustomers } = useRescue()
+
   const tableRows = recentSubscriptions.map(([id, customer, plan, amount, status, date]) => [
     <span key={id} className="font-mono text-xs text-slate-500">{id}</span>,
     <span key={customer} className="font-medium">{customer}</span>,
@@ -81,6 +85,36 @@ export default function Dashboard() {
         title="Dashboard"
         description="Welcome back! Here is what is happening with your subscription business today."
       />
+
+      {/* Subscription Rescue AI Top Recommendation Banner */}
+      <div className="mb-6 p-5 bg-gradient-to-r from-slate-900 via-blue-950 to-indigo-900 rounded-2xl text-white shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border border-blue-500/20">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="px-2.5 py-0.5 bg-amber-400 text-slate-900 font-extrabold rounded-full text-xs uppercase tracking-wide flex items-center gap-1">
+              <Sparkles className="w-3.5 h-3.5 fill-current" /> Top Recommendation ⭐
+            </span>
+            <span className="text-xs font-mono text-blue-300">Predictive ML Churn Prevention</span>
+          </div>
+          <h2 className="text-xl font-bold mt-2">Subscription Rescue AI</h2>
+          <p className="text-xs text-slate-300 max-w-2xl mt-1">
+            Analyzing 1,000 subscribers for early churn signals (usage drops, failed payments, downgrades, support friction, upcoming renewals) and delivering actionable intervention playbooks before cancellation occurs.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-4 self-end md:self-center">
+          <div className="text-right hidden sm:block">
+            <div className="text-sm font-bold text-rose-400">{rescueStats.highRiskCount} High Risk Accounts</div>
+            <div className="text-[11px] text-slate-400">${rescueStats.totalAtRiskMRR.toFixed(0)} MRR at risk</div>
+          </div>
+          <Link
+            to="/rescue-ai"
+            className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-blue-500/30 flex items-center gap-1.5 whitespace-nowrap"
+          >
+            <span>Launch Rescue AI</span>
+            <ArrowRight className="w-4 h-4" />
+          </Link>
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
         {stats.map((s) => (
