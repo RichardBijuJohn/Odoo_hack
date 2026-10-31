@@ -47,13 +47,13 @@ function CustomerRoute({ children }) {
   if (!currentUser) {
     return <Navigate to="/login" replace />
   }
+  return children
+}
 
-  function AdminRoute({ children }) {
-    const { currentUser } = useAuth()
-    if (!currentUser) return <Navigate to="/login" replace />
-    if (currentUser.role !== 'admin') return <Navigate to="/dashboard" replace />
-    return children
-  }
+function AdminRoute({ children }) {
+  const { currentUser } = useAuth()
+  if (!currentUser) return <Navigate to="/login" replace />
+  if (currentUser.role !== 'admin') return <Navigate to="/dashboard" replace />
   return children
 }
 
