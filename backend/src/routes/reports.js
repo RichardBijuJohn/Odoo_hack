@@ -281,9 +281,9 @@ router.get('/', async (req, res, next) => {
        GROUP BY report_name ORDER BY count DESC, report_name LIMIT 1`
     );
     const [activity] = await pool.query(
-      `SELECT DATE(created_at) AS report_date, COUNT(*) AS count FROM report_runs
+      `SELECT DATE_FORMAT(created_at, '%Y-%m-%d') AS report_date, COUNT(*) AS count FROM report_runs
        WHERE created_at >= DATE_SUB(CURRENT_DATE, INTERVAL 6 DAY)
-       GROUP BY DATE(created_at) ORDER BY report_date`
+        GROUP BY DATE_FORMAT(created_at, '%Y-%m-%d') ORDER BY report_date`
     );
     const history = await listHistory(8);
     res.json({
@@ -407,7 +407,7 @@ router.post('/generate', async (req, res, next) => {
       result = await generateEntityReport(entityName, filters);
     }
 
-    const reportName = `${reportTypeLabels[type]} Report · ${entityName === 'overview' ? 'Overview' : entities[entityName].label}`;
+    const reportName = `${reportTypeLabels[type]} Report - ${entityName === 'overview' ? 'Overview' : entities[entityName].label}`;
     const userIdFromAuth = Number(req.user?.id) || null;
     const [insert] = await pool.execute(
       `INSERT INTO report_runs

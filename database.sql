@@ -22,18 +22,56 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
+<<<<<<< HEAD
 -- 2. Products Table (sales price, cost price, internal notes)
+=======
+-- 2. Products Table
+CREATE TABLE IF NOT EXISTS product_categories (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(50) NOT NULL UNIQUE,
+  description VARCHAR(255) NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+>>>>>>> 16143d5c5cc45687c84965c85ea3e2995625fc37
 CREATE TABLE IF NOT EXISTS products (
   id INT AUTO_INCREMENT PRIMARY KEY,
   code VARCHAR(50) NOT NULL UNIQUE,
   name VARCHAR(150) NOT NULL,
+<<<<<<< HEAD
   type ENUM('Software', 'Hardware', 'Service', 'Consulting') DEFAULT 'Software',
   sales_price DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
   cost_price DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
   notes TEXT,
   status ENUM('Active', 'Archived') DEFAULT 'Active',
+=======
+  description TEXT,
+  category VARCHAR(50) DEFAULT 'Software',
+  category_id INT NULL,
+  price DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+  cost_price DECIMAL(10, 2) NULL,
+  stock_quantity DECIMAL(12, 3) NOT NULL DEFAULT 0.000,
+  minimum_stock_level DECIMAL(12, 3) NOT NULL DEFAULT 0.000,
+  unit_of_measure VARCHAR(30) NOT NULL DEFAULT 'unit',
+  image_url VARCHAR(2048) NULL,
+  status ENUM('active', 'inactive', 'archived') NOT NULL DEFAULT 'active',
+>>>>>>> 16143d5c5cc45687c84965c85ea3e2995625fc37
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (category_id) REFERENCES product_categories(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS product_stock_movements (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  product_id INT NOT NULL,
+  previous_quantity DECIMAL(12, 3) NOT NULL,
+  quantity_change DECIMAL(12, 3) NOT NULL,
+  new_quantity DECIMAL(12, 3) NOT NULL,
+  reason VARCHAR(255) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+  INDEX idx_product_stock_movements_product_created (product_id, created_at)
 );
 
 -- 3. Product Variants (e.g. Brand attribute: Odoo adds 560 to price)
