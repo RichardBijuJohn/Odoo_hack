@@ -1,78 +1,140 @@
-import { useState } from 'react'
-import { Plus, CreditCard, Calendar, Check, AlertCircle, Clock, ShieldCheck, X } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { Plus, CreditCard, Check, AlertCircle, X, Loader2 } from 'lucide-react'
 import PageHeader from '../../components/PageHeader'
-import { useCatalog } from '../../context/CatalogContext'
+import API from '../../services/api'
+import { createPlan, getPlans } from '../../services/plans'
 import { useAuth } from '../../context/AuthContext'
 
+const INITIAL_FORM = {
+  name: '',
+  productId: '',
+  billingCycle: 'monthly',
+  price: '',
+  currency: 'USD',
+  trialDays: 0,
+  userLimit: 1,
+  status: 'active',
+}
+
+const errorMessage = (error, fallback) =>
+  error?.message || error?.response?.data?.message || error?.data?.message ||
+  (typeof error === 'string' ? error : fallback)
+
 export default function Plans() {
-  const { plans, products, addPlan } = useCatalog()
   const { isAdmin } = useAuth()
 
+  const [plans, setPlans] = useState([])
+  const [products, setProducts] = useState([])
+  const [loadingPlans, setLoadingPlans] = useState(true)
+  const [loadingProducts, setLoadingProducts] = useState(true)
+  const [plansError, setPlansError] = useState('')
+  const [productsError, setProductsError] = useState('')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [feedback, setFeedback] = useState('')
+  const [formError, setFormError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [formData, setFormData] = useState(INITIAL_FORM)
 
-  const [formData, setFormData] = useState({
-    name: '',
-    productId: products[0]?.id || '',
-    billingCycle: 'monthly', // daily, weekly, monthly, yearly
-    price: '',
-    minQuantity: 1,
-    startDate: new Date().toISOString().split('T')[0],
-    endDate: '2026-12-31',
-    autoCloseOnEnd: true,
-    canCloseEarly: true,
-    canPause: true,
-    canRenew: true
-  })
+  const refreshPlans = useCallback(async () => {
+    setLoadingPlans(true)
+    setPlansError('')
+    try {
+      const response = await getPlans()
+      if (!response?.success || !Array.isArray(response.data)) {
+        throw new Error('The Plans API returned an invalid response.')
+      }
+      setPlans(response.data)
+      return response.data
+    } catch (error) {
+      setPlansError(errorMessage(error, 'Failed to load plans.'))
+      throw error
+    } finally {
+      setLoadingPlans(false)
+    }
+  }, [])
 
-  const handleSubmit = (e) => {
+  useEffect(() => {
+    refreshPlans().catch(() => {})
+
+    API.get('/products', { params: { limit: 100, status: 'active' } })
+      .then((response) => {
+        if (!Array.isArray(response?.data)) {
+          throw new Error('The Products API returned an invalid response.')
+        }
+        setProducts(response.data)
+      })
+      .catch((error) => {
+        setProductsError(errorMessage(error, 'Failed to load products.'))
+      })
+      .finally(() => setLoadingProducts(false))
+  }, [refreshPlans])
+
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!formData.name || !formData.price) return
+    setFormError('')
+    setFeedback('')
 
-    const product = products.find(p => String(p.id) === String(formData.productId))
+    const name = formData.name.trim()
+    if (!name) {
+      setFormError('Plan name is required.')
+      return
+    }
+    if (formData.price === '' || !Number.isFinite(Number(formData.price))) {
+      setFormError('Enter a valid plan price.')
+      return
+    }
 
-    addPlan({
-      name: formData.name,
-      productId: formData.productId,
-      productName: product?.name || 'Brightloop Product',
-      billingCycle: formData.billingCycle,
-      price: parseFloat(formData.price),
-      minQuantity: parseInt(formData.minQuantity) || 1,
-      startDate: formData.startDate,
-      endDate: formData.endDate,
-      autoCloseOnEnd: Boolean(formData.autoCloseOnEnd),
-      canCloseEarly: Boolean(formData.canCloseEarly),
-      canPause: Boolean(formData.canPause),
-      canRenew: Boolean(formData.canRenew)
-    })
+    const payload = {
+      product_id: formData.productId || null,
+      name,
+      billing_cycle: formData.billingCycle,
+      price: Number(formData.price),
+      currency: formData.currency.trim(),
+      trial_days: Number(formData.trialDays),
+      user_limit: Number(formData.userLimit),
+      status: formData.status,
+    }
 
-    setFeedback(`Plan "${formData.name}" created successfully!`)
-    setTimeout(() => setFeedback(''), 3500)
-    setIsModalOpen(false)
-    setFormData({
-      name: '',
-      productId: products[0]?.id || '',
-      billingCycle: 'monthly',
-      price: '',
-      minQuantity: 1,
-      startDate: new Date().toISOString().split('T')[0],
-      endDate: '2026-12-31',
-      autoCloseOnEnd: true,
-      canCloseEarly: true,
-      canPause: true,
-      canRenew: true
-    })
+    setSubmitting(true)
+    try {
+      const response = await createPlan(payload)
+      const createdPlan = response?.data
+      if (!response?.success || !createdPlan?.id) {
+        throw new Error(response?.message || 'The Plans API did not return the saved plan.')
+      }
+
+      setIsModalOpen(false)
+      setFormData(INITIAL_FORM)
+      try {
+        await refreshPlans()
+        setFeedback(`Plan "${createdPlan.name}" was created successfully.`)
+      } catch {
+        setPlans((currentPlans) => [
+          createdPlan,
+          ...currentPlans.filter((plan) => plan.id !== createdPlan.id),
+        ])
+        setFeedback(`Plan "${createdPlan.name}" was saved, but the list could not be refreshed.`)
+      }
+    } catch (error) {
+      setFormError(errorMessage(error, 'Failed to create plan. Please try again.'))
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Subscription Plans & Policies"
-        description="Configure billing frequencies (Daily, Weekly, Monthly, Yearly), minimum orders, validity dates, and lifecycle closing/pausing rules."
+        description="Configure subscription plan pricing, billing cycles, and limits."
         action={
           isAdmin && (
             <button
-              onClick={() => setIsModalOpen(true)}
+              onClick={() => {
+                setFormError('')
+                setFeedback('')
+                setIsModalOpen(true)
+              }}
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-xl transition shadow-md shadow-blue-500/20"
             >
               <Plus className="w-4 h-4" /> Create Plan
@@ -88,7 +150,32 @@ export default function Plans() {
         </div>
       )}
 
-      {/* Plans Grid */}
+      {plansError && (
+        <div className="flex items-start gap-2.5 p-3.5 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
+          <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <span>{plansError}</span>
+          <button
+            type="button"
+            onClick={() => refreshPlans().catch(() => {})}
+            className="ml-auto font-semibold underline"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {loadingPlans ? (
+        <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-500">
+          <Loader2 className="w-5 h-5 animate-spin" /> Loading plans...
+        </div>
+      ) : plansError ? null : plans.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-slate-200 p-10 text-center">
+          <CreditCard className="w-8 h-8 mx-auto text-slate-300 mb-3" />
+          <h3 className="font-semibold text-slate-700">No plans yet</h3>
+          <p className="text-sm text-slate-500 mt-1">Create a plan to make it available for subscriptions.</p>
+        </div>
+      ) : (
+      /* Plans Grid */
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {plans.map((plan) => (
           <div
@@ -98,97 +185,42 @@ export default function Plans() {
             <div>
               <div className="flex items-center justify-between gap-2 mb-2">
                 <span className="font-mono text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded font-semibold">
-                  {plan.code}
+                  PLN-{String(plan.id).padStart(3, '0')}
                 </span>
                 <span className="text-xs px-2.5 py-0.5 bg-purple-100 text-purple-800 font-semibold rounded-full capitalize">
-                  {plan.billingCycle}
+                  {plan.billing_cycle}
                 </span>
               </div>
 
               <h3 className="text-base font-bold text-slate-800 mb-0.5">{plan.name}</h3>
-              <p className="text-xs text-slate-500 mb-3">{plan.productName}</p>
+              <p className="text-xs text-slate-500 mb-3">{plan.product_name || 'No linked product'}</p>
 
               <div className="text-2xl font-bold text-slate-900 mb-3">
-                ${plan.price.toFixed(2)}{' '}
-                <span className="text-xs font-normal text-slate-500">/{plan.billingCycle}</span>
+                {plan.currency || 'USD'} {Number(plan.price).toFixed(2)}{' '}
+                <span className="text-xs font-normal text-slate-500">/{plan.billing_cycle}</span>
               </div>
 
-              {/* Attributes list */}
+              {/* Attributes persisted by the current plans schema */}
               <div className="bg-slate-50 rounded-xl p-3 space-y-1.5 text-xs text-slate-600 mb-4">
                 <div className="flex justify-between">
-                  <span>Minimum Quantity:</span>
-                  <strong className="text-slate-800">{plan.minQuantity} units</strong>
+                  <span>User limit:</span>
+                  <strong className="text-slate-800">{plan.user_limit}</strong>
                 </div>
                 <div className="flex justify-between">
-                  <span>Start Date:</span>
-                  <span className="text-slate-700">{plan.startDate}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>End Date:</span>
-                  <span className="text-slate-700">{plan.endDate || 'Ongoing'}</span>
-                </div>
-              </div>
-
-              {/* Lifecycle Rules Badge Checklist */}
-              <div className="space-y-1 text-xs">
-                <p className="font-semibold text-slate-700 uppercase tracking-wider text-[11px] mb-2">
-                  Plan Lifecycle Rules:
-                </p>
-                <div className="grid grid-cols-2 gap-1.5">
-                  <div
-                    className={`flex items-center gap-1.5 px-2 py-1 rounded text-[11px] ${
-                      plan.autoCloseOnEnd
-                        ? 'bg-emerald-50 text-emerald-700 font-medium'
-                        : 'bg-slate-100 text-slate-500'
-                    }`}
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                    <span>Auto-close at end</span>
-                  </div>
-
-                  <div
-                    className={`flex items-center gap-1.5 px-2 py-1 rounded text-[11px] ${
-                      plan.canCloseEarly
-                        ? 'bg-emerald-50 text-emerald-700 font-medium'
-                        : 'bg-slate-100 text-slate-500'
-                    }`}
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                    <span>Can close early</span>
-                  </div>
-
-                  <div
-                    className={`flex items-center gap-1.5 px-2 py-1 rounded text-[11px] ${
-                      plan.canPause
-                        ? 'bg-emerald-50 text-emerald-700 font-medium'
-                        : 'bg-slate-100 text-slate-500'
-                    }`}
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                    <span>Can pause</span>
-                  </div>
-
-                  <div
-                    className={`flex items-center gap-1.5 px-2 py-1 rounded text-[11px] ${
-                      plan.canRenew
-                        ? 'bg-emerald-50 text-emerald-700 font-medium'
-                        : 'bg-slate-100 text-slate-500'
-                    }`}
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                    <span>Can renew</span>
-                  </div>
+                  <span>Trial days:</span>
+                  <span className="text-slate-700">{plan.trial_days}</span>
                 </div>
               </div>
             </div>
 
             <div className="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
-              <span>Status: <strong className="text-emerald-600">{plan.status}</strong></span>
-              <span>Controlled by Admin</span>
+              <span>Status: <strong className={plan.status === 'active' ? 'text-emerald-600' : 'text-slate-600'}>{plan.status}</strong></span>
+              <span>Plan ID: {plan.id}</span>
             </div>
           </div>
         ))}
       </div>
+      )}
 
       {/* Create Plan Modal (Admin Exclusive) */}
       {isModalOpen && (
@@ -201,10 +233,12 @@ export default function Plans() {
                 </div>
                 <div>
                   <h3 className="font-bold text-slate-800 text-base">Create Subscription Plan</h3>
-                  <p className="text-xs text-slate-500">Define price, billing cycle, and lifecycle management</p>
+                  <p className="text-xs text-slate-500">Set the plan details stored in the database.</p>
                 </div>
               </div>
               <button
+                type="button"
+                disabled={submitting}
                 onClick={() => setIsModalOpen(false)}
                 className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition"
               >
@@ -213,6 +247,13 @@ export default function Plans() {
             </div>
 
             <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-4">
+              {formError && (
+                <div className="flex items-start gap-2.5 p-3.5 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <span>{formError}</span>
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">
                   Plan Name *
@@ -220,6 +261,7 @@ export default function Plans() {
                 <input
                   type="text"
                   required
+                  maxLength="100"
                   placeholder="e.g. Standard Monthly Growth"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
@@ -230,17 +272,23 @@ export default function Plans() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">
-                    Base Product *
+                    Base Product
                   </label>
                   <select
                     value={formData.productId}
                     onChange={(e) => setFormData({ ...formData, productId: e.target.value })}
                     className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white"
                   >
-                    {products.map(p => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
+                    <option value="">
+                      {loadingProducts ? 'Loading products...' : 'No linked product'}
+                    </option>
+                    {products.map((product) => (
+                      <option key={product.id} value={product.id}>{product.name}</option>
                     ))}
                   </select>
+                  {productsError && (
+                    <p className="mt-1 text-xs text-amber-700">{productsError} Plans can still be created without a product.</p>
+                  )}
                 </div>
 
                 <div>
@@ -252,9 +300,9 @@ export default function Plans() {
                     onChange={(e) => setFormData({ ...formData, billingCycle: e.target.value })}
                     className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white font-medium text-slate-800"
                   >
-                    <option value="daily">Daily</option>
                     <option value="weekly">Weekly</option>
                     <option value="monthly">Monthly</option>
+                    <option value="quarterly">Quarterly</option>
                     <option value="yearly">Yearly</option>
                   </select>
                 </div>
@@ -263,10 +311,12 @@ export default function Plans() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">
-                    Plan Price ($) *
+                    Plan Price *
                   </label>
                   <input
                     type="number"
+                    min="0"
+                    max="99999999.99"
                     step="0.01"
                     required
                     placeholder="99.00"
@@ -278,14 +328,14 @@ export default function Plans() {
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">
-                    Minimum Quantity *
+                    Currency *
                   </label>
                   <input
-                    type="number"
-                    min="1"
+                    type="text"
                     required
-                    value={formData.minQuantity}
-                    onChange={(e) => setFormData({ ...formData, minQuantity: e.target.value })}
+                    maxLength="10"
+                    value={formData.currency}
+                    onChange={(e) => setFormData({ ...formData, currency: e.target.value.toUpperCase() })}
                     className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   />
                 </div>
@@ -294,104 +344,72 @@ export default function Plans() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">
-                    Start Availability Date
+                    Trial Days
                   </label>
                   <input
-                    type="date"
+                    type="number"
+                    min="0"
+                    max="2147483647"
                     required
-                    value={formData.startDate}
-                    onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                    value={formData.trialDays}
+                    onChange={(e) => setFormData({ ...formData, trialDays: e.target.value })}
                     className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">
-                    End Availability Date
+                    User Limit
                   </label>
                   <input
-                    type="date"
+                    type="number"
+                    min="1"
+                    max="2147483647"
                     required
-                    value={formData.endDate}
-                    onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+                    value={formData.userLimit}
+                    onChange={(e) => setFormData({ ...formData, userLimit: e.target.value })}
                     className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   />
                 </div>
               </div>
 
-              {/* Admin Lifecycle Engine Controls */}
-              <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/70">
-                <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                  Admin Lifecycle Rules & Automation
-                </h4>
-                <p className="text-[11px] text-slate-500 mb-3">
-                  Specify whether subscriptions under this plan should auto-terminate or allow early closure, pause, and renewal.
-                </p>
-
-                <div className="space-y-2.5">
-                  <label className="flex items-center gap-3 text-xs text-slate-700 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={formData.autoCloseOnEnd}
-                      onChange={(e) => setFormData({ ...formData, autoCloseOnEnd: e.target.checked })}
-                      className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
-                    />
-                    <span>
-                      <strong>Auto-close on end date:</strong> Subscription closes on its own when the date ends.
-                    </span>
-                  </label>
-
-                  <label className="flex items-center gap-3 text-xs text-slate-700 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={formData.canCloseEarly}
-                      onChange={(e) => setFormData({ ...formData, canCloseEarly: e.target.checked })}
-                      className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
-                    />
-                    <span>
-                      <strong>Allow early closure:</strong> Customer/Staff can terminate prior to completion.
-                    </span>
-                  </label>
-
-                  <label className="flex items-center gap-3 text-xs text-slate-700 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={formData.canPause}
-                      onChange={(e) => setFormData({ ...formData, canPause: e.target.checked })}
-                      className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
-                    />
-                    <span>
-                      <strong>Allow pause:</strong> Users can temporarily halt recurring billing.
-                    </span>
-                  </label>
-
-                  <label className="flex items-center gap-3 text-xs text-slate-700 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={formData.canRenew}
-                      onChange={(e) => setFormData({ ...formData, canRenew: e.target.checked })}
-                      className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
-                    />
-                    <span>
-                      <strong>Allow renewal:</strong> Subscriptions can be reactivated / extended upon expiry.
-                    </span>
-                  </label>
-                </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">
+                  Status *
+                </label>
+                <select
+                  required
+                  value={formData.status}
+                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white"
+                >
+                  <option value="active">Active</option>
+                  <option value="archived">Archived</option>
+                </select>
               </div>
+
+              <p className="text-xs text-slate-500">
+                Product association is optional. Only fields supported by the existing plans table are saved.
+              </p>
 
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
                 <button
                   type="button"
-                  onClick={() => setIsModalOpen(false)}
+                  disabled={submitting}
+                  onClick={() => {
+                    setFormError('')
+                    setIsModalOpen(false)
+                  }}
                   className="px-4 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold shadow-md shadow-blue-500/20"
+                  disabled={submitting}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold shadow-md shadow-blue-500/20 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  Save Plan
+                  {submitting ? 'Saving...' : 'Save Plan'}
                 </button>
               </div>
             </form>
