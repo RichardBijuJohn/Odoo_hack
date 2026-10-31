@@ -1,39 +1,423 @@
-import { Plus } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import {
+  Archive, ArrowDown, ArrowUp, Boxes, ChevronLeft, ChevronRight, CircleAlert,
+  Eye, ImageOff, LoaderCircle, Package, Pencil, Plus, Search, Tag, Trash2,
+  X,
+} from 'lucide-react'
+import API from '../../services/api'
+import EmptyState from '../../components/EmptyState'
+import ErrorMessage from '../../components/ErrorMessage'
+import LoadingSpinner from '../../components/LoadingSpinner'
 import PageHeader from '../../components/PageHeader'
-import DataTable from '../../components/DataTable'
 
-const SAMPLE_ROWS = [
-  ['PRD-001', 'Basic SaaS License',    'Software', '$29.00',  'Active'],
-  ['PRD-002', 'Pro SaaS License',      'Software', '$99.00',  'Active'],
-  ['PRD-003', 'Enterprise License',    'Software', '$299.00', 'Active'],
-  ['PRD-004', 'Add-on: Analytics',     'Add-on',   '$19.00',  'Active'],
-  ['PRD-005', 'Add-on: Storage 100GB', 'Add-on',   '$9.00',   'Inactive'],
-]
+const money = (value) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(Number(value || 0))
+const dateLabel = (value) => value ? new Date(value).toLocaleDateString() : '—'
+const readableError = (error) => error?.message || (typeof error === 'string' ? error : 'Request failed. Please try again.')
+const emptySummary = { total_products: 0, active_products: 0, out_of_stock_products: 0, low_stock_products: 0, total_categories: 0, recently_added: [] }
+const blankProduct = () => ({ name: '', code: '', description: '', category_id: '', price: '', cost_price: '', stock_quantity: '0', minimum_stock_level: '0', unit_of_measure: 'unit', image_url: '', status: 'active' })
+const stockStyles = {
+  in_stock: 'bg-emerald-50 text-emerald-700',
+  low_stock: 'bg-amber-50 text-amber-800',
+  out_of_stock: 'bg-red-50 text-red-700',
+}
+const stockLabels = { in_stock: 'In stock', low_stock: 'Low stock', out_of_stock: 'Out of stock' }
+const statusStyles = { active: 'bg-emerald-50 text-emerald-700', inactive: 'bg-slate-100 text-slate-600', archived: 'bg-amber-50 text-amber-800' }
+
+function Dialog({ title, children, onClose, wide = false }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+      <section role="dialog" aria-modal="true" aria-label={title} className={`max-h-[92vh] w-full ${wide ? 'max-w-3xl' : 'max-w-xl'} overflow-y-auto rounded-lg bg-white p-5 shadow-xl sm:p-6`}>
+        <div className="mb-5 flex items-center justify-between gap-4">
+          <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+          <button type="button" className="table-action" aria-label="Close dialog" onClick={onClose}><X className="h-5 w-5" /></button>
+        </div>
+        {children}
+      </section>
+    </div>
+  )
+}
+
+function ProductImage({ src, name, size = 'h-12 w-12' }) {
+  const [failed, setFailed] = useState(false)
+  if (!src || failed) return <div className={`${size} flex shrink-0 items-center justify-center rounded-md bg-slate-100 text-slate-400`}><ImageOff className="h-5 w-5" /></div>
+  return <img className={`${size} shrink-0 rounded-md border border-slate-200 object-cover`} src={src} alt={name} onError={() => setFailed(true)} />
+}
+
+function ProductForm({ product, categories, onClose, onSaved, onManageCategories }) {
+  const [form, setForm] = useState(() => product ? {
+    name: product.name,
+    code: product.code,
+    description: product.description || '',
+    category_id: String(product.category_id || ''),
+    price: String(product.price ?? ''),
+    cost_price: product.cost_price === null ? '' : String(product.cost_price ?? ''),
+    stock_quantity: String(product.stock_quantity ?? 0),
+    minimum_stock_level: String(product.minimum_stock_level ?? 0),
+    unit_of_measure: product.unit_of_measure || 'unit',
+    image_url: product.image_url || '',
+    status: product.status || 'active',
+  } : blankProduct())
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  function update(key, value) {
+    setForm((current) => ({ ...current, [key]: value }))
+  }
+
+  async function submit(event) {
+    event.preventDefault()
+    setSaving(true)
+    setError('')
+    const payload = {
+      ...form,
+      category_id: Number(form.category_id),
+      price: Number(form.price),
+      cost_price: form.cost_price === '' ? null : Number(form.cost_price),
+      stock_quantity: Number(form.stock_quantity),
+      minimum_stock_level: Number(form.minimum_stock_level),
+    }
+    try {
+      if (product) await API.put(`/products/${product.id}`, payload)
+      else await API.post('/products', payload)
+      onSaved(product ? 'Product updated.' : 'Product created.')
+    } catch (requestError) {
+      setError(readableError(requestError))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog title={product ? 'Edit product' : 'Add product'} onClose={onClose} wide>
+      <form className="space-y-5" onSubmit={submit}>
+        {error && <ErrorMessage message={error} />}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="field-label">Product name<input className="field-control" required maxLength={150} value={form.name} onChange={(event) => update('name', event.target.value)} /></label>
+          <label className="field-label">Product ID / SKU<input className="field-control font-mono" maxLength={50} value={form.code} onChange={(event) => update('code', event.target.value)} placeholder="Leave blank to generate" /></label>
+          <label className="field-label sm:col-span-2">Description<textarea className="field-control min-h-20" maxLength={10000} value={form.description} onChange={(event) => update('description', event.target.value)} /></label>
+          <label className="field-label">Category
+            <span className="flex gap-2"><select className="field-control" required value={form.category_id} onChange={(event) => update('category_id', event.target.value)}><option value="">Select category</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select><button type="button" className="button-secondary shrink-0 px-3" onClick={onManageCategories} title="Manage categories"><Tag className="h-4 w-4" /></button></span>
+          </label>
+          <label className="field-label">Product status<select className="field-control" value={form.status} onChange={(event) => update('status', event.target.value)}><option value="active">Active</option><option value="inactive">Inactive</option><option value="archived">Archived</option></select></label>
+          <label className="field-label">Selling price (₹)<input className="field-control" type="number" min="0" max="99999999.99" step="0.01" required value={form.price} onChange={(event) => update('price', event.target.value)} /></label>
+          <label className="field-label">Cost price (₹)<input className="field-control" type="number" min="0" max="99999999.99" step="0.01" value={form.cost_price} onChange={(event) => update('cost_price', event.target.value)} /></label>
+          <label className="field-label">Available quantity<input className="field-control" type="number" min="0" max="999999999.999" step="0.001" required value={form.stock_quantity} onChange={(event) => update('stock_quantity', event.target.value)} /></label>
+          <label className="field-label">Minimum stock level<input className="field-control" type="number" min="0" max="999999999.999" step="0.001" required value={form.minimum_stock_level} onChange={(event) => update('minimum_stock_level', event.target.value)} /></label>
+          <label className="field-label">Unit of measurement<input className="field-control" required maxLength={30} value={form.unit_of_measure} onChange={(event) => update('unit_of_measure', event.target.value)} placeholder="unit, box, kg…" /></label>
+          <label className="field-label">Product image URL<input className="field-control" type="url" maxLength={2048} value={form.image_url} onChange={(event) => update('image_url', event.target.value)} placeholder="https://…" /></label>
+        </div>
+        <div className="flex justify-end gap-3 border-t border-slate-100 pt-4"><button type="button" className="button-secondary" onClick={onClose}>Cancel</button><button type="submit" className="button-primary" disabled={saving || categories.length === 0}>{saving ? 'Saving…' : product ? 'Save changes' : 'Create product'}</button></div>
+        {categories.length === 0 && <p className="text-right text-xs text-amber-700">Create a category before adding products.</p>}
+      </form>
+    </Dialog>
+  )
+}
+
+function CategoryManager({ categories, onClose, onChanged }) {
+  const [editing, setEditing] = useState(null)
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  function beginEdit(category) {
+    setEditing(category)
+    setName(category.name)
+    setDescription(category.description || '')
+    setError('')
+  }
+
+  function reset() {
+    setEditing(null)
+    setName('')
+    setDescription('')
+    setError('')
+  }
+
+  async function save(event) {
+    event.preventDefault()
+    setSaving(true)
+    setError('')
+    try {
+      const payload = { name, description }
+      if (editing) await API.put(`/products/categories/${editing.id}`, payload)
+      else await API.post('/products/categories', payload)
+      reset()
+      onChanged(editing ? 'Category updated.' : 'Category created.')
+    } catch (requestError) {
+      setError(readableError(requestError))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function remove(category) {
+    if (!window.confirm(`Delete category “${category.name}”?`)) return
+    setError('')
+    try {
+      await API.delete(`/products/categories/${category.id}`)
+      onChanged('Category deleted.')
+    } catch (requestError) {
+      setError(readableError(requestError))
+    }
+  }
+
+  return (
+    <Dialog title="Product categories" onClose={onClose}>
+      {error && <div className="mb-4"><ErrorMessage message={error} /></div>}
+      <form className="mb-5 space-y-3 rounded-md bg-slate-50 p-3" onSubmit={save}>
+        <label className="field-label">Category name<input className="field-control" required maxLength={50} value={name} onChange={(event) => setName(event.target.value)} /></label>
+        <label className="field-label">Description<input className="field-control" maxLength={255} value={description} onChange={(event) => setDescription(event.target.value)} /></label>
+        <div className="flex justify-end gap-2">{editing && <button type="button" className="button-secondary" onClick={reset}>Cancel edit</button>}<button type="submit" className="button-primary" disabled={saving}>{saving ? 'Saving…' : editing ? 'Save category' : 'Add category'}</button></div>
+      </form>
+      <div className="divide-y divide-slate-100">
+        {categories.length === 0 ? <p className="py-6 text-center text-sm text-slate-500">No categories yet.</p> : categories.map((category) => (
+          <div key={category.id} className="flex items-center justify-between gap-3 py-3">
+            <div className="min-w-0"><p className="truncate text-sm font-medium text-slate-800">{category.name}</p><p className="text-xs text-slate-500">{category.product_count} products{category.description ? ` · ${category.description}` : ''}</p></div>
+            <div className="flex shrink-0"><button type="button" className="table-action" title={`Edit ${category.name}`} onClick={() => beginEdit(category)}><Pencil className="h-4 w-4" /></button><button type="button" className="table-action text-red-600" title={`Delete ${category.name}`} onClick={() => remove(category)}><Trash2 className="h-4 w-4" /></button></div>
+          </div>
+        ))}
+      </div>
+    </Dialog>
+  )
+}
+
+function ProductDetails({ product, onClose, onEdit, onDelete, onStockChanged }) {
+  const [quantity, setQuantity] = useState(String(product.stock_quantity))
+  const [reason, setReason] = useState('Stock count adjustment')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  async function updateStock(event) {
+    event.preventDefault()
+    setSaving(true)
+    setError('')
+    try {
+      await API.patch(`/products/${product.id}/stock`, { stock_quantity: Number(quantity), reason })
+      onStockChanged('Stock updated and movement recorded.')
+    } catch (requestError) {
+      setError(readableError(requestError))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog title="Product details" onClose={onClose} wide>
+      {error && <div className="mb-4"><ErrorMessage message={error} /></div>}
+      <div className="flex flex-col gap-5 sm:flex-row">
+        <ProductImage src={product.image_url} name={product.name} size="h-28 w-28" />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="text-xl font-semibold text-slate-900">{product.name}</h3><p className="mt-1 font-mono text-sm text-slate-500">{product.code}</p></div><div className="flex gap-2"><button className="button-secondary" type="button" onClick={onEdit}><Pencil className="h-4 w-4" /> Edit</button><button className="button-secondary text-red-700" type="button" onClick={onDelete}><Trash2 className="h-4 w-4" /> Delete</button></div></div>
+          <p className="mt-3 whitespace-pre-wrap text-sm text-slate-600">{product.description || 'No description provided.'}</p>
+        </div>
+      </div>
+      <dl className="mt-5 grid gap-3 border-y border-slate-100 py-4 sm:grid-cols-2 lg:grid-cols-3">
+        {[
+          ['Category', product.category || 'Uncategorized'], ['Selling price', money(product.price)], ['Cost price', product.cost_price === null ? '—' : money(product.cost_price)],
+          ['Available stock', `${product.stock_quantity} ${product.unit_of_measure}`], ['Minimum stock', `${product.minimum_stock_level} ${product.unit_of_measure}`], ['Stock state', stockLabels[product.stock_status]],
+          ['Status', product.status], ['Product ID / SKU', product.code], ['Date added', new Date(product.created_at).toLocaleString()],
+        ].map(([label, value]) => <div key={label}><dt className="text-xs text-slate-500">{label}</dt><dd className="mt-1 break-words text-sm font-medium capitalize text-slate-800">{value || '—'}</dd></div>)}
+      </dl>
+      <form className="mt-5 grid gap-3 rounded-md bg-slate-50 p-4 sm:grid-cols-[1fr_1.5fr_auto] sm:items-end" onSubmit={updateStock}>
+        <label className="field-label">Set available quantity<input className="field-control" type="number" min="0" max="999999999.999" step="0.001" required value={quantity} onChange={(event) => setQuantity(event.target.value)} /></label>
+        <label className="field-label">Adjustment reason<input className="field-control" required maxLength={255} value={reason} onChange={(event) => setReason(event.target.value)} /></label>
+        <button type="submit" className="button-primary" disabled={saving}>{saving ? 'Updating…' : 'Update stock'}</button>
+      </form>
+      <div className="mt-6">
+        <h3 className="mb-3 font-semibold text-slate-800">Stock update history</h3>
+        {product.stock_history?.length ? <div className="overflow-x-auto rounded-md border border-slate-200"><table className="w-full text-sm"><thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="px-3 py-2">Date</th><th className="px-3 py-2">Previous</th><th className="px-3 py-2">Change</th><th className="px-3 py-2">New</th><th className="px-3 py-2">Reason</th></tr></thead><tbody>{product.stock_history.map((movement) => <tr key={movement.id} className="border-t border-slate-100"><td className="whitespace-nowrap px-3 py-2">{new Date(movement.created_at).toLocaleString()}</td><td className="px-3 py-2">{movement.previous_quantity}</td><td className={`px-3 py-2 font-medium ${Number(movement.quantity_change) < 0 ? 'text-red-700' : 'text-emerald-700'}`}>{Number(movement.quantity_change) > 0 ? '+' : ''}{movement.quantity_change}</td><td className="px-3 py-2">{movement.new_quantity}</td><td className="px-3 py-2">{movement.reason}</td></tr>)}</tbody></table></div> : <p className="rounded-md border border-dashed border-slate-300 py-6 text-center text-sm text-slate-500">No stock changes recorded.</p>}
+      </div>
+    </Dialog>
+  )
+}
+
+function StatCard({ label, value, detail, icon: Icon, tone }) {
+  return <div className="rounded-lg border border-slate-200 bg-white p-4"><div className="flex items-center justify-between gap-3"><p className="text-sm font-medium text-slate-500">{label}</p><span className={`flex h-9 w-9 items-center justify-center rounded-md ${tone}`}><Icon className="h-4 w-4" /></span></div><p className="mt-3 truncate text-2xl font-semibold text-slate-900">{value}</p><p className="mt-1 truncate text-xs text-slate-500">{detail}</p></div>
+}
 
 export default function Products() {
+  const [products, setProducts] = useState([])
+  const [categories, setCategories] = useState([])
+  const [summary, setSummary] = useState(emptySummary)
+  const [pagination, setPagination] = useState({ page: 1, total_pages: 0, total: 0, page_size: 10 })
+  const [filters, setFilters] = useState({ search: '', category_id: '', stock_status: '', status: '', sort_by: 'recent', direction: 'desc' })
+  const [page, setPage] = useState(1)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+  const [modal, setModal] = useState(null)
+  const [busyId, setBusyId] = useState(null)
+
+  const loadData = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const [listResponse, summaryResponse, categoryResponse] = await Promise.all([
+        API.get('/products', { params: { ...filters, page, limit: 10 } }),
+        API.get('/products/summary'),
+        API.get('/products/categories'),
+      ])
+      setProducts(listResponse.data)
+      setPagination(listResponse.pagination)
+      setSummary(summaryResponse.data)
+      setCategories(categoryResponse.data)
+    } catch (requestError) {
+      setError(readableError(requestError))
+    } finally {
+      setLoading(false)
+    }
+  }, [filters, page])
+
+  useEffect(() => { loadData() }, [loadData])
+
+  function changeFilter(key, value) {
+    setPage(1)
+    setFilters((current) => ({ ...current, [key]: value }))
+  }
+
+  async function refresh(message) {
+    if (message) setNotice(message)
+    setModal(null)
+    await loadData()
+  }
+
+  async function openDetails(id) {
+    setBusyId(id)
+    setError('')
+    try {
+      const response = await API.get(`/products/${id}`)
+      setModal({ type: 'details', product: response.data })
+    } catch (requestError) {
+      setError(readableError(requestError))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function removeProduct(product) {
+    if (!window.confirm(`Delete ${product.name}? This cannot be undone.`)) return
+    setBusyId(product.id)
+    setError('')
+    setNotice('')
+    try {
+      await API.delete(`/products/${product.id}`)
+      setNotice('Product deleted.')
+      if (products.length === 1 && page > 1) setPage((current) => current - 1)
+      else await loadData()
+      setModal(null)
+    } catch (requestError) {
+      setError(readableError(requestError))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function categoryChanged(message) {
+    setNotice(message)
+    setError('')
+    try {
+      const [categoryResponse, summaryResponse] = await Promise.all([API.get('/products/categories'), API.get('/products/summary')])
+      setCategories(categoryResponse.data)
+      setSummary(summaryResponse.data)
+    } catch (requestError) {
+      setError(readableError(requestError))
+    }
+  }
+
+  async function stockChanged(message) {
+    const productId = modal?.product?.id
+    setNotice(message)
+    await loadData()
+    if (productId) {
+      try {
+        const response = await API.get(`/products/${productId}`)
+        setModal({ type: 'details', product: response.data })
+      } catch (requestError) {
+        setError(readableError(requestError))
+        setModal(null)
+      }
+    }
+  }
+
+  async function editFromDetails() {
+    if (!modal?.product) return
+    const response = await API.get(`/products/${modal.product.id}`)
+    setModal({ type: 'edit', product: response.data })
+  }
+
+  const recentProduct = summary.recently_added?.[0]
+  const categoryManagerOpen = modal?.type === 'categories'
+  const dialogProduct = modal?.product
+
   return (
-    <div>
-      <PageHeader
-        title="Products"
-        description="Manage your product catalog and pricing."
-        action={
-          <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition">
-            <Plus className="w-4 h-4" /> Add Product
-          </button>
-        }
-      />
-      <div className="bg-white rounded-xl border border-slate-200 p-5">
-        <DataTable
-          columns={['Product ID', 'Name', 'Category', 'Price', 'Status']}
-          rows={SAMPLE_ROWS.map(([id, name, cat, price, status]) => [
-            <span key={id} className="font-mono text-xs text-slate-500">{id}</span>,
-            <span key={name} className="font-medium">{name}</span>,
-            cat,
-            <span key={price} className="font-semibold">{price}</span>,
-            <span key={status} className={`px-2 py-0.5 rounded-full text-xs font-semibold ${status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>{status}</span>,
-          ])}
-        />
-      </div>
+    <div className="space-y-6">
+      <PageHeader title="Products" description="Manage your product catalog, categories, and inventory." action={<div className="flex flex-wrap gap-2"><button type="button" className="button-secondary" onClick={() => setModal({ type: 'categories' })}><Tag className="h-4 w-4" /> Categories</button><button type="button" className="button-primary" onClick={() => setModal({ type: 'create' })}><Plus className="h-4 w-4" /> Add product</button></div>} />
+      {error && <ErrorMessage message={error} />}
+      {notice && <div role="status" className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{notice}</div>}
+
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6" aria-label="Product statistics">
+        <StatCard label="Total products" value={summary.total_products} detail="All catalog items" icon={Package} tone="bg-sky-50 text-sky-700" />
+        <StatCard label="Active products" value={summary.active_products} detail="Available in catalog" icon={Boxes} tone="bg-emerald-50 text-emerald-700" />
+        <StatCard label="Out of stock" value={summary.out_of_stock_products} detail="Quantity is zero" icon={CircleAlert} tone="bg-red-50 text-red-700" />
+        <StatCard label="Low stock" value={summary.low_stock_products} detail="At or below minimum" icon={Archive} tone="bg-amber-50 text-amber-800" />
+        <StatCard label="Categories" value={summary.total_categories} detail={`${summary.used_categories || 0} in use`} icon={Tag} tone="bg-indigo-50 text-indigo-700" />
+        <StatCard label="Recently added" value={recentProduct?.name || 'None yet'} detail={recentProduct ? `${recentProduct.code} · ${dateLabel(recentProduct.created_at)}` : 'New products appear here'} icon={Plus} tone="bg-rose-50 text-rose-700" />
+      </section>
+
+      <section className="rounded-lg border border-slate-200 bg-white p-4 sm:p-5">
+        <div className="mb-4 flex flex-col gap-3">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div><h2 className="font-semibold text-slate-900">Product catalog</h2><p className="mt-1 text-sm text-slate-500">{pagination.total.toLocaleString()} products</p></div>
+            <label className="relative block w-full lg:max-w-sm"><Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><input aria-label="Search products" className="field-control pl-9" value={filters.search} onChange={(event) => changeFilter('search', event.target.value)} placeholder="Search name, SKU, or ID" /></label>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <select aria-label="Filter by category" className="field-control" value={filters.category_id} onChange={(event) => changeFilter('category_id', event.target.value)}><option value="">All categories</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name} ({category.product_count})</option>)}</select>
+            <select aria-label="Filter by stock status" className="field-control" value={filters.stock_status} onChange={(event) => changeFilter('stock_status', event.target.value)}><option value="">All stock levels</option><option value="in_stock">In stock</option><option value="low_stock">Low stock</option><option value="out_of_stock">Out of stock</option></select>
+            <select aria-label="Filter by product status" className="field-control" value={filters.status} onChange={(event) => changeFilter('status', event.target.value)}><option value="">All statuses</option><option value="active">Active</option><option value="inactive">Inactive</option><option value="archived">Archived</option></select>
+            <select aria-label="Sort products" className="field-control" value={filters.sort_by} onChange={(event) => changeFilter('sort_by', event.target.value)}><option value="recent">Recently added</option><option value="name">Product name</option><option value="price">Selling price</option><option value="stock">Available stock</option></select>
+          </div>
+          <div className="flex justify-end"><button type="button" className="button-secondary" onClick={() => { setFilters({ search: '', category_id: '', stock_status: '', status: '', sort_by: 'recent', direction: 'desc' }); setPage(1) }}>Clear filters</button></div>
+        </div>
+
+        {loading ? <LoadingSpinner text="Loading products…" /> : products.length === 0 ? (
+          pagination.total === 0 && !filters.search && !filters.category_id && !filters.stock_status && !filters.status
+            ? <EmptyState title="No products yet" description="Add your first product to start managing the catalog and inventory." action={<button type="button" className="button-primary" onClick={() => setModal({ type: 'create' })}><Plus className="h-4 w-4" /> Add product</button>} />
+            : <EmptyState title="No matching products" description="Try adjusting or clearing the search and filters." />
+        ) : (
+          <>
+            <div className="overflow-x-auto rounded-md border border-slate-200">
+              <table className="w-full min-w-[980px] text-sm">
+                <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr>
+                  <th className="px-3 py-3">Product</th>
+                  <th className="px-3 py-3">Category</th>
+                  <th className="px-3 py-3"><button className="inline-flex items-center gap-1" onClick={() => setFilters((current) => ({ ...current, sort_by: 'price', direction: current.sort_by === 'price' && current.direction === 'asc' ? 'desc' : 'asc' }))}>Selling price{filters.sort_by === 'price' && (filters.direction === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}</button></th>
+                  <th className="px-3 py-3">Cost</th><th className="px-3 py-3">Available stock</th><th className="px-3 py-3">Stock state</th><th className="px-3 py-3">Status</th><th className="px-3 py-3">Date added</th><th className="px-3 py-3 text-right">Actions</th>
+                </tr></thead>
+                <tbody>{products.map((product) => (
+                  <tr key={product.id} className="border-t border-slate-100 hover:bg-slate-50">
+                    <td className="px-3 py-3"><div className="flex items-center gap-3"><ProductImage src={product.image_url} name={product.name} /><div className="min-w-0"><button type="button" className="block max-w-56 truncate text-left font-semibold text-slate-800 hover:text-blue-700" onClick={() => openDetails(product.id)}>{product.name}</button><span className="font-mono text-xs text-slate-500">{product.code}</span></div></div></td>
+                    <td className="px-3 py-3 text-slate-600">{product.category || 'Uncategorized'}</td>
+                    <td className="whitespace-nowrap px-3 py-3 font-semibold text-slate-800">{money(product.price)}</td>
+                    <td className="whitespace-nowrap px-3 py-3 text-slate-600">{product.cost_price === null ? '—' : money(product.cost_price)}</td>
+                    <td className="whitespace-nowrap px-3 py-3 tabular-nums text-slate-700">{product.stock_quantity} {product.unit_of_measure}</td>
+                    <td className="px-3 py-3"><span className={`whitespace-nowrap rounded-full px-2 py-1 text-xs font-medium ${stockStyles[product.stock_status]}`}>{stockLabels[product.stock_status]}</span></td>
+                    <td className="px-3 py-3"><span className={`rounded-full px-2 py-1 text-xs font-medium capitalize ${statusStyles[product.status]}`}>{product.status}</span></td>
+                    <td className="whitespace-nowrap px-3 py-3 text-slate-600">{dateLabel(product.created_at)}</td>
+                    <td className="px-3 py-3"><div className="flex justify-end gap-1"><button type="button" className="table-action" title="View product" disabled={busyId === product.id} onClick={() => openDetails(product.id)}><Eye className="h-4 w-4" /></button><button type="button" className="table-action" title="Edit product" onClick={() => setModal({ type: 'edit', product })}><Pencil className="h-4 w-4" /></button><button type="button" className="table-action text-red-600" title="Delete product" disabled={busyId === product.id} onClick={() => removeProduct(product)}><Trash2 className="h-4 w-4" /></button></div></td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+            <div className="mt-4 flex items-center justify-between gap-3"><span className="text-xs text-slate-500">Page {pagination.page} of {Math.max(pagination.total_pages, 1)}</span><div className="flex items-center gap-2"><button type="button" className="button-secondary px-3" aria-label="Previous products page" disabled={page <= 1} onClick={() => setPage((current) => Math.max(current - 1, 1))}><ChevronLeft className="h-4 w-4" /></button><button type="button" className="button-secondary px-3" aria-label="Next products page" disabled={page >= pagination.total_pages} onClick={() => setPage((current) => current + 1)}><ChevronRight className="h-4 w-4" /></button></div></div>
+          </>
+        )}
+      </section>
+
+      {modal?.type === 'create' && <ProductForm categories={categories} onClose={() => setModal(null)} onSaved={refresh} onManageCategories={() => setModal({ type: 'categories' })} />}
+      {modal?.type === 'edit' && <ProductForm product={modal.product} categories={categories} onClose={() => setModal(null)} onSaved={refresh} onManageCategories={() => setModal({ type: 'categories' })} />}
+      {categoryManagerOpen && <CategoryManager categories={categories} onClose={() => setModal(null)} onChanged={categoryChanged} />}
+      {modal?.type === 'details' && dialogProduct && <ProductDetails product={dialogProduct} onClose={() => setModal(null)} onEdit={editFromDetails} onDelete={() => removeProduct(dialogProduct)} onStockChanged={stockChanged} />}
     </div>
   )
 }
