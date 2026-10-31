@@ -58,7 +58,7 @@ export const AuthProvider = ({ children }) => {
 
   const [currentUser, setCurrentUser] = useState(() => {
     const saved = localStorage.getItem('bl_current_user');
-    return saved ? JSON.parse(saved) : DEFAULT_USERS[0]; // default logged in as admin
+    return saved ? JSON.parse(saved) : null;
   });
 
   const [resetTokens, setResetTokens] = useState(() => {
