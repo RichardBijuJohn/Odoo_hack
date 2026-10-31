@@ -14,6 +14,12 @@ body {
   font-family: 'Inter', system-ui, sans-serif;
   background-color: #f8fafc;
   color: #1e293b;
+  transition: background-color 200ms ease, color 200ms ease;
+}
+
+html.dark body {
+  background-color: #0f172a;
+  color: #e2e8f0;
 }
 
 /* Custom scrollbar */
@@ -34,6 +40,76 @@ body {
 }
 .sidebar-link.active {
   @apply text-white bg-blue-600;
+  color: #ffffff !important;
+}
+
+.sidebar-link.active span,
+.sidebar-link.active svg {
+  color: #ffffff !important;
+}
+
+html.dark .sidebar-link {
+  color: #cbd5e1;
+}
+
+html.dark .sidebar-link:hover {
+  color: #ffffff;
+}
+
+html.dark .sidebar-link.active {
+  color: #ffffff !important;
+  background-color: #2563eb;
+}
+
+html.dark .bg-white {
+  background-color: #1e293b;
+}
+
+html.dark .bg-slate-50 {
+  background-color: #0f172a;
+}
+
+html.dark .bg-slate-100 {
+  background-color: #334155;
+}
+
+html.dark .text-slate-800,
+html.dark .text-slate-700 {
+  color: #e2e8f0;
+}
+
+html.dark .text-slate-600,
+html.dark .text-slate-500 {
+  color: #94a3b8;
+}
+
+html.dark .text-slate-400 {
+  color: #64748b;
+}
+
+html.dark .border-slate-200,
+html.dark .border-slate-100 {
+  border-color: #334155;
+}
+
+html.dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #334155;
+}
+
+html.dark input,
+html.dark select,
+html.dark textarea {
+  color-scheme: dark;
+}
+
+html.dark .field-control {
+  border-color: #475569;
+  background-color: #1e293b;
+  color: #e2e8f0;
+}
+
+html.dark .hover\:bg-slate-50:hover {
+  background-color: #334155;
 }
 
 @layer components {

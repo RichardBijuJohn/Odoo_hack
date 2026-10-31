@@ -191,6 +191,69 @@ function RevenueOverview() {
   )
 }
 
+function RecentSubscriptions() {
+  const [filter, setFilter] = useState('All')
+  const [query, setQuery] = useState('')
+  const filtered = recentSubscriptions.filter(([, customer, plan, , status]) => (
+    (filter === 'All' || status === filter) &&
+    (!query || `${customer} ${plan}`.toLowerCase().includes(query.toLowerCase()))
+  ))
+  const activeCount = recentSubscriptions.filter(([, , , , status]) => status === 'Active').length
+  const trialCount = recentSubscriptions.filter(([, , , , status]) => status === 'Trial').length
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="border-b border-slate-100 p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-bold text-slate-800">Recent subscriptions</h2>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">{recentSubscriptions.length} total</span>
+            </div>
+            <p className="mt-1 text-xs text-slate-400">Monitor the latest customer subscription activity.</p>
+          </div>
+          <div className="flex items-center gap-3 text-xs">
+            <span className="text-slate-500"><span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-emerald-500" />{activeCount} active</span>
+            <span className="text-slate-500"><span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-amber-500" />{trialCount} trial</span>
+            <Link to="/subscriptions" className="inline-flex items-center gap-1 font-semibold text-blue-600 hover:text-blue-700">View all <ExternalLink className="h-3.5 w-3.5" /></Link>
+          </div>
+        </div>
+        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative w-full sm:max-w-xs">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search customer or plan..." className="field-control pl-9 text-xs" />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <SlidersHorizontal className="mr-1 h-4 w-4 text-slate-400" />
+            {['All', 'Active', 'Trial', 'Inactive'].map((option) => (
+              <button type="button" key={option} onClick={() => setFilter(option)} className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${filter === option ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>{option}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[700px] text-left">
+          <thead className="bg-slate-50/80"><tr>{['Customer', 'Plan', 'Billing', 'Status', 'Started', ''].map((heading) => <th key={heading} className="px-5 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">{heading}</th>)}</tr></thead>
+          <tbody className="divide-y divide-slate-100">
+            {filtered.map(([id, customer, plan, amount, status, date]) => {
+              const style = subscriptionStatusStyles[status]
+              return <tr key={id} className="group transition hover:bg-blue-50/40">
+                <td className="px-5 py-3.5"><div className="flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-blue-700">{customer.charAt(0)}</div><div><p className="text-sm font-semibold text-slate-800">{customer}</p><p className="font-mono text-[10px] text-slate-400">{id}</p></div></div></td>
+                <td className="px-5 py-3.5"><span className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">{plan}</span></td>
+                <td className="px-5 py-3.5"><p className="text-sm font-bold text-slate-700">{amount.split('/')[0]}</p><p className="text-[10px] text-slate-400">per {amount.split('/')[1]}</p></td>
+                <td className="px-5 py-3.5"><span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 ring-inset ${style.badge}`}><span className={`h-1.5 w-1.5 rounded-full ${style.dot}`} />{status}</span></td>
+                <td className="px-5 py-3.5 text-xs font-medium text-slate-500">{date}</td>
+                <td className="px-5 py-3.5 text-right"><Link to="/subscriptions" className="text-xs font-semibold text-blue-600 opacity-0 transition group-hover:opacity-100">Details</Link></td>
+              </tr>
+            })}
+          </tbody>
+        </table>
+        {!filtered.length && <div className="px-5 py-10 text-center text-sm text-slate-400">No subscriptions match the selected filters.</div>}
+      </div>
+    </div>
+  )
+}
+
 function QuickStats() {
   const metrics = [
     { label: 'Plan conversion', value: '73.8%', progress: 73.8, change: '+4.2%', icon: Target, tone: 'blue' },
