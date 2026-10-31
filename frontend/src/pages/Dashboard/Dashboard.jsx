@@ -1,9 +1,8 @@
 import { useMemo, useState } from 'react'
-import { Users, RefreshCw, DollarSign, FileText, Sparkles, ArrowRight, ArrowUpRight, Download, TrendingUp, Target, UserCheck, Activity, Headphones, ChevronUp } from 'lucide-react'
+import { Users, RefreshCw, DollarSign, FileText, Sparkles, ArrowRight, ArrowUpRight, Download, TrendingUp, Target, UserCheck, Activity, Headphones, ChevronUp, Search, SlidersHorizontal, ExternalLink } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import StatCard from '../../components/StatCard'
 import PageHeader from '../../components/PageHeader'
-import DataTable from '../../components/DataTable'
 import { useRescue } from '../../context/RescueContext'
 
 const stats = [
@@ -53,10 +52,10 @@ const recentSubscriptions = [
   ['#SUB-005', 'Eva Martinez',    'Starter Plan', '$29/mo',  'Active',   '2024-01-11'],
 ]
 
-const statusColors = {
-  Active:   'bg-green-100 text-green-700',
-  Inactive: 'bg-red-100 text-red-600',
-  Trial:    'bg-yellow-100 text-yellow-700',
+const subscriptionStatusStyles = {
+  Active: { badge: 'bg-emerald-50 text-emerald-700 ring-emerald-600/10', dot: 'bg-emerald-500' },
+  Inactive: { badge: 'bg-rose-50 text-rose-700 ring-rose-600/10', dot: 'bg-rose-500' },
+  Trial: { badge: 'bg-amber-50 text-amber-700 ring-amber-600/10', dot: 'bg-amber-500' },
 }
 
 const revenueData = [
@@ -217,6 +216,119 @@ function QuickStats() {
             violet: { icon: 'bg-violet-50 text-violet-600', bar: 'bg-violet-500' },
             emerald: { icon: 'bg-emerald-50 text-emerald-600', bar: 'bg-emerald-500' },
           }
+
+          function RecentSubscriptions() {
+            const [filter, setFilter] = useState('All')
+            const [query, setQuery] = useState('')
+            const filters = ['All', 'Active', 'Trial', 'Inactive']
+            const filteredSubscriptions = recentSubscriptions.filter((subscription) => {
+              const [, customer, plan, , status] = subscription
+              const matchesStatus = filter === 'All' || status === filter
+              const matchesQuery = !query || `${customer} ${plan}`.toLowerCase().includes(query.toLowerCase())
+              return matchesStatus && matchesQuery
+            })
+            const activeCount = recentSubscriptions.filter(([, , , , status]) => status === 'Active').length
+            const trialCount = recentSubscriptions.filter(([, , , , status]) => status === 'Trial').length
+
+            return (
+              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <div className="border-b border-slate-100 p-5">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-base font-bold text-slate-800">Recent subscriptions</h2>
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">{recentSubscriptions.length} total</span>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-400">Monitor the latest customer subscription activity.</p>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs">
+                      <span className="flex items-center gap-1.5 text-slate-500"><span className="h-2 w-2 rounded-full bg-emerald-500" />{activeCount} active</span>
+                      <span className="flex items-center gap-1.5 text-slate-500"><span className="h-2 w-2 rounded-full bg-amber-500" />{trialCount} trial</span>
+                      <Link to="/subscriptions" className="inline-flex items-center gap-1 font-semibold text-blue-600 hover:text-blue-700">
+                        View all <ExternalLink className="h-3.5 w-3.5" />
+                      </Link>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="relative w-full sm:max-w-xs">
+                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      <input
+                        value={query}
+                        onChange={(event) => setQuery(event.target.value)}
+                        placeholder="Search customer or plan..."
+                        className="field-control pl-9 text-xs"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <SlidersHorizontal className="mr-1 h-4 w-4 text-slate-400" />
+                      {filters.map((option) => (
+                        <button
+                          type="button"
+                          key={option}
+                          onClick={() => setFilter(option)}
+                          className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${filter === option ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                        >
+                          {option}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[700px] text-left">
+                    <thead className="bg-slate-50/80">
+                      <tr>
+                        {['Customer', 'Plan', 'Billing', 'Status', 'Started', ''].map((heading) => (
+                          <th key={heading} className="px-5 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">{heading}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredSubscriptions.map(([id, customer, plan, amount, status, date]) => {
+                        const statusStyle = subscriptionStatusStyles[status]
+                        return (
+                          <tr key={id} className="group transition hover:bg-blue-50/40">
+                            <td className="px-5 py-3.5">
+                              <div className="flex items-center gap-3">
+                                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 text-sm font-bold text-blue-700">
+                                  {customer.charAt(0)}
+                                </div>
+                                <div>
+                                  <p className="text-sm font-semibold text-slate-800">{customer}</p>
+                                  <p className="mt-0.5 font-mono text-[10px] text-slate-400">{id}</p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-5 py-3.5">
+                              <span className="inline-flex rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">{plan}</span>
+                            </td>
+                            <td className="px-5 py-3.5">
+                              <p className="text-sm font-bold text-slate-700">{amount.split('/')[0]}</p>
+                              <p className="text-[10px] text-slate-400">{amount.includes('/') ? `per ${amount.split('/')[1]}` : 'recurring'}</p>
+                            </td>
+                            <td className="px-5 py-3.5">
+                              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 ring-inset ${statusStyle.badge}`}>
+                                <span className={`h-1.5 w-1.5 rounded-full ${statusStyle.dot}`} />{status}
+                              </span>
+                            </td>
+                            <td className="px-5 py-3.5 text-xs font-medium text-slate-500">{date}</td>
+                            <td className="px-5 py-3.5 text-right">
+                              <Link to="/subscriptions" className="text-xs font-semibold text-blue-600 opacity-0 transition group-hover:opacity-100 hover:text-blue-700">Details</Link>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                  {filteredSubscriptions.length === 0 && (
+                    <div className="px-5 py-10 text-center text-sm text-slate-400">No subscriptions match the selected filters.</div>
+                  )}
+                </div>
+              </div>
+            )
+          }
           return (
             <div key={label}>
               <div className="flex items-center gap-3">
@@ -255,15 +367,6 @@ function QuickStats() {
 
 export default function Dashboard() {
   const { stats: rescueStats, customers: rescueCustomers } = useRescue()
-
-  const tableRows = recentSubscriptions.map(([id, customer, plan, amount, status, date]) => [
-    <span key={id} className="font-mono text-xs text-slate-500">{id}</span>,
-    <span key={customer} className="font-medium">{customer}</span>,
-    plan,
-    <span key={amount} className="font-semibold text-slate-700">{amount}</span>,
-    <span key={status} className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${statusColors[status]}`}>{status}</span>,
-    date,
-  ])
 
   return (
     <div>
@@ -314,17 +417,7 @@ export default function Dashboard() {
         <QuickStats />
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 p-5">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-base font-semibold text-slate-700">Recent Subscriptions</h2>
-          <button className="text-sm text-blue-600 font-medium hover:underline">View all</button>
-        </div>
-        <DataTable
-          columns={['ID', 'Customer', 'Plan', 'Amount', 'Status', 'Date']}
-          rows={tableRows}
-          emptyMsg="No subscriptions found."
-        />
-      </div>
+      <RecentSubscriptions />
     </div>
   )
 }
