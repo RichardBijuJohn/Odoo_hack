@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Users, RefreshCw, DollarSign, FileText, Sparkles, ArrowRight, ArrowUpRight, CalendarDays, Download, TrendingUp } from 'lucide-react'
+import { Users, RefreshCw, DollarSign, FileText, Sparkles, ArrowRight, ArrowUpRight, Download, TrendingUp, Target, UserCheck, Activity, Headphones, ChevronUp } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import StatCard from '../../components/StatCard'
 import PageHeader from '../../components/PageHeader'
@@ -192,6 +192,67 @@ function RevenueOverview() {
   )
 }
 
+function QuickStats() {
+  const metrics = [
+    { label: 'Plan conversion', value: '73.8%', progress: 73.8, change: '+4.2%', icon: Target, tone: 'blue' },
+    { label: 'Avg. revenue / user', value: '$40.59', progress: 81, change: '+6.8%', icon: UserCheck, tone: 'violet' },
+    { label: 'Trial to paid', value: '61.2%', progress: 61.2, change: '+2.4%', icon: Activity, tone: 'emerald' },
+  ]
+  return (
+    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex items-start justify-between border-b border-slate-100 p-5">
+        <div>
+          <h2 className="text-base font-bold text-slate-800">Business health</h2>
+          <p className="mt-1 text-xs text-slate-400">Key performance indicators</p>
+        </div>
+        <span className="flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Healthy
+        </span>
+      </div>
+
+      <div className="space-y-5 p-5">
+        {metrics.map(({ label, value, progress, change, icon: Icon, tone }) => {
+          const colors = {
+            blue: { icon: 'bg-blue-50 text-blue-600', bar: 'bg-blue-500' },
+            violet: { icon: 'bg-violet-50 text-violet-600', bar: 'bg-violet-500' },
+            emerald: { icon: 'bg-emerald-50 text-emerald-600', bar: 'bg-emerald-500' },
+          }
+          return (
+            <div key={label}>
+              <div className="flex items-center gap-3">
+                <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${colors[tone].icon}`}><Icon className="h-4 w-4" /></span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate text-xs font-semibold text-slate-500">{label}</span>
+                    <span className="text-sm font-extrabold text-slate-800">{value}</span>
+                  </div>
+                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                    <div className={`h-full rounded-full ${colors[tone].bar} transition-all`} style={{ width: `${progress}%` }} />
+                  </div>
+                </div>
+              </div>
+              <div className="mt-1.5 flex justify-end">
+                <span className="flex items-center gap-0.5 text-[10px] font-bold text-emerald-600"><ChevronUp className="h-3 w-3" />{change} this month</span>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      <div className="mx-5 mb-5 flex items-center justify-between rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 p-3">
+        <div className="flex items-center gap-2">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-orange-500 shadow-sm"><Headphones className="h-4 w-4" /></span>
+          <div>
+            <p className="text-xs font-bold text-slate-700">Support queue</p>
+            <p className="text-[10px] text-slate-500">Needs attention today</p>
+          </div>
+        </div>
+        <span className="text-lg font-extrabold text-orange-600">7 <span className="text-[10px] font-medium text-orange-500">open</span></span>
+      </div>
+    </div>
+  )
+}
+
 export default function Dashboard() {
   const { stats: rescueStats, customers: rescueCustomers } = useRescue()
 
@@ -250,23 +311,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 gap-4 mb-6 xl:grid-cols-3">
         <RevenueOverview />
 
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
-          <h2 className="text-base font-semibold text-slate-700 mb-4">Quick Stats</h2>
-          <div className="space-y-3">
-            {[
-              { label: 'Plan Conversion Rate', value: '73.8%' },
-              { label: 'Avg. Revenue per User', value: '$40.59' },
-              { label: 'Churn Rate (MTD)',       value: '2.1%' },
-              { label: 'Trial to Paid',          value: '61.2%' },
-              { label: 'Support Tickets Open',   value: '7' },
-            ].map(({ label, value }) => (
-              <div key={label} className="flex justify-between items-center py-2 border-b border-slate-100 last:border-0">
-                <span className="text-sm text-slate-500">{label}</span>
-                <span className="text-sm font-semibold text-slate-700">{value}</span>
-              </div>
-            ))}
-          </div>
-        </div>
+        <QuickStats />
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 p-5">
