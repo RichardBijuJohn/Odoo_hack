@@ -162,6 +162,7 @@ Only draft invoices can be edited or confirmed. Payments require a confirmed inv
 ## Admin Discounts
 
 Apply `database/migrations/004_discounts.sql` after the billing and product migrations. This adds discount rules, product/plan applicability tables, invoice discount fields, and invoice item product references.
+If the discounts table already exists and the API reports `Unknown column 'd.usage_limit'`, apply `database/migrations/006_fix_discount_usage_columns.sql` once.
 
 Discount management is available at `/discounts` to admin users only. The backend enforces the same boundary with `requireAdmin`, returning `403` for staff and customer roles. The main endpoints are:
 
