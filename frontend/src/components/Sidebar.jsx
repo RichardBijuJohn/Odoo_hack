@@ -41,7 +41,7 @@ export default function Sidebar() {
       {/* Navigation Links */}
       <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider px-3 mb-3">Main Menu</p>
-        {navItems.map(({ to, label, icon: Icon, highlight }) => (
+        {navItems.filter(({ to }) => to !== '/discounts' || isAdmin).map(({ to, label, icon: Icon, highlight }) => (
           <NavLink
             key={to}
             to={to}
