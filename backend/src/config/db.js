@@ -3,12 +3,12 @@ const dotenv = require('dotenv');
 const fs = require('fs');
 const path = require('path');
 
-dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 // Determine SSL configuration for secure database connections (e.g., Aiven Cloud)
 const getSslConfig = () => {
-  // If explicitly disabled via env, do not use SSL
-  if (process.env.DB_SSL === 'false') {
+  // Local MySQL does not require TLS. Enable it explicitly for hosted databases.
+  if (process.env.DB_SSL !== 'true') {
     return undefined;
   }
 
